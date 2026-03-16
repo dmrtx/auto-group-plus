@@ -227,6 +227,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }).catch(err => console.error("Could not get tab for regroup:", err));
     return;
   }
+
+  // 3. OPTIONS PAGE / OVERVIEW REQUEST
+  if (request.action === 'GET_OVERVIEW') {
+    (async () => {
+      try {
+        const [{ rules = [], settings = {} }, groups] = await Promise.all([
+          chrome.storage.sync.get(['rules', 'settings']),
+          chrome.tabGroups.query({})
+        ]);
+        sendResponse({ rules, settings, groups });
+      } catch (e) {
+        console.error('[AutoGroup+] Failed to build overview', e);
+        sendResponse({ rules: [], settings: {}, groups: [], error: e && e.message });
+      }
+    })();
+    // Keep the message channel open for async response
+    return true;
+  }
+
+  // 4. OPTIONS PAGE / REBUILD ALL GROUPS
+  if (request.action === 'REBUILD_GROUPS') {
+    (async () => {
+      try {
+        const allTabs = await chrome.tabs.query({});
+        for (const tab of allTabs) {
+          await groupTab(tab);
+        }
+        sendResponse({ ok: true, processed: allTabs.length });
+      } catch (e) {
+        console.error('[AutoGroup+] Failed to rebuild groups', e);
+        sendResponse({ ok: false, error: e && e.message });
+      }
+    })();
+    return true;
+  }
 });
 
 // Listen for tab updates

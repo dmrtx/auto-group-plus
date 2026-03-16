@@ -1,6 +1,7 @@
 const rulesContainer = document.getElementById('rules-container');
 const addRuleBtn = document.getElementById('add-rule-btn');
 const viewOverviewBtn = document.getElementById('view-overview-btn');
+const rebuildGroupsBtn = document.getElementById('rebuild-groups-btn');
 const ruleModal = document.getElementById('rule-modal');
 const ruleForm = document.getElementById('rule-form');
 const cancelBtn = document.getElementById('cancel-btn');
@@ -127,28 +128,43 @@ async function deleteRule(id) {
 // Event Listeners
 addRuleBtn.onclick = () => openModal();
 if (viewOverviewBtn) {
-    viewOverviewBtn.onclick = async () => {
-        const [data, browserGroups] = await Promise.all([
-            chrome.storage.sync.get(['rules', 'settings']),
-            chrome.tabGroups.query({})
-        ]);
+    viewOverviewBtn.onclick = () => {
+        chrome.runtime.sendMessage({ action: 'GET_OVERVIEW' }, (resp) => {
+            if (!resp) {
+                alert('Could not load overview (no response from background).');
+                return;
+            }
 
-        const rulesSummary = (data.rules || []).map(r => {
-            return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${r.patterns.join(', ')}`;
-        }).join('\n') || 'No rules defined.';
+            const rulesList = (resp.rules || []).map(r => {
+                return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${r.patterns.join(', ')}`;
+            }).join('\n') || 'No rules defined.';
 
-        const groupsSummary = browserGroups.map(g => {
-            return `• ${g.title || '(no title)'} [${g.color}]  |  tabs: ${g.tabIds?.length ?? 0}`;
-        }).join('\n') || 'No tab groups currently open.';
+            const groupsList = (resp.groups || []).map(g => {
+                const count = Array.isArray(g.tabIds) ? g.tabIds.length : (g.tabCount ?? 0);
+                return `• ${g.title || '(no title)'} [${g.color}]  |  tabs: ${count}`;
+            }).join('\n') || 'No tab groups currently open.';
 
-        alert(
-            'Rules:\n' +
-            '-------------------------\n' +
-            rulesSummary +
-            '\n\nTab Groups (current browser windows):\n' +
-            '-------------------------\n' +
-            groupsSummary
-        );
+            alert(
+                'Rules:\n' +
+                '-------------------------\n' +
+                rulesList +
+                '\n\nTab Groups (all windows):\n' +
+                '-------------------------\n' +
+                groupsList
+            );
+        });
+    };
+}
+if (rebuildGroupsBtn) {
+    rebuildGroupsBtn.onclick = () => {
+        if (!confirm('Rebuild all tab groups now based on the current rules?')) return;
+        chrome.runtime.sendMessage({ action: 'REBUILD_GROUPS' }, (resp) => {
+            if (!resp || !resp.ok) {
+                alert('Failed to rebuild groups.' + (resp && resp.error ? `\n${resp.error}` : ''));
+                return;
+            }
+            alert(`Rebuilt groups for ${resp.processed} tabs.`);
+        });
     };
 }
 cancelBtn.onclick = () => closeModal();
