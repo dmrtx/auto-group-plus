@@ -1,5 +1,6 @@
 const rulesContainer = document.getElementById('rules-container');
 const addRuleBtn = document.getElementById('add-rule-btn');
+const viewOverviewBtn = document.getElementById('view-overview-btn');
 const ruleModal = document.getElementById('rule-modal');
 const ruleForm = document.getElementById('rule-form');
 const cancelBtn = document.getElementById('cancel-btn');
@@ -10,8 +11,6 @@ let rules = [];
 
 const excludeWebAppsCheck = document.getElementById('setting-exclude-webapps');
 const mergeCountdownCheck = document.getElementById('setting-merge-countdown');
-
-let rules = [];
 
 // Load rules & settings on startup
 async function loadData() {
@@ -127,6 +126,31 @@ async function deleteRule(id) {
 
 // Event Listeners
 addRuleBtn.onclick = () => openModal();
+if (viewOverviewBtn) {
+    viewOverviewBtn.onclick = async () => {
+        const [data, browserGroups] = await Promise.all([
+            chrome.storage.sync.get(['rules', 'settings']),
+            chrome.tabGroups.query({})
+        ]);
+
+        const rulesSummary = (data.rules || []).map(r => {
+            return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${r.patterns.join(', ')}`;
+        }).join('\n') || 'No rules defined.';
+
+        const groupsSummary = browserGroups.map(g => {
+            return `• ${g.title || '(no title)'} [${g.color}]  |  tabs: ${g.tabIds?.length ?? 0}`;
+        }).join('\n') || 'No tab groups currently open.';
+
+        alert(
+            'Rules:\n' +
+            '-------------------------\n' +
+            rulesSummary +
+            '\n\nTab Groups (current browser windows):\n' +
+            '-------------------------\n' +
+            groupsSummary
+        );
+    };
+}
 cancelBtn.onclick = () => closeModal();
 
 colorOptions.forEach(opt => {
@@ -138,6 +162,12 @@ ruleForm.onsubmit = async (e) => {
 
     const id = document.getElementById('rule-id').value || Date.now().toString();
     const name = document.getElementById('rule-name').value.trim();
+    // Prevent creating nameless groups (which appear as blank chips in Chrome)
+    if (!name) {
+        alert('Please enter a group name');
+        return;
+    }
+
     const patterns = document.getElementById('rule-patterns').value
         .split(',')
         .map(p => p.trim())
