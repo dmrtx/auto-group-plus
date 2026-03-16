@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoGroup+</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg-dark: #1e293b;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --accent: #22d3ee;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            width: 480px;
+            padding: 1rem;
+            margin: 0;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        h2 {
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        .section-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--text-main);
+        }
+
+        .suggestions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .suggestion-link {
+            font-size: 0.75rem;
+            color: var(--accent);
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .suggestion-link:hover {
+            text-decoration: underline;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-bottom: 0.25rem;
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: 0.6rem;
+            border-radius: 6px;
+            border: 1px solid var(--glass-border);
+            background: rgba(15, 23, 42, 0.5);
+            color: white;
+            font-size: 0.85rem;
+            box-sizing: border-box;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 0.6rem;
+            background: var(--primary);
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 6px;
+            border: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            filter: brightness(1.1);
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .footer-link {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .footer-link:hover {
+            color: var(--text-main);
+        }
+
+        .group-preview {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .color-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* Chrome Group Colors */
+        .bg-grey {
+            background-color: #5f6368;
+        }
+
+        .bg-blue {
+            background-color: #1a73e8;
+        }
+
+        .bg-red {
+            background-color: #d93025;
+        }
+
+        .bg-yellow {
+            background-color: #f1c21b;
+        }
+
+        .bg-green {
+            background-color: #1e8e3e;
+        }
+
+        .bg-pink {
+            background-color: #d01884;
+        }
+
+        .bg-purple {
+            background-color: #9334e6;
+        }
+
+        .bg-cyan {
+            background-color: #007b83;
+        }
+
+        .bg-orange {
+            background-color: #fa903e;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h2>Add Grouping Patterns</h2>
+    </header>
+
+    <div class="suggestions">
+        <span style="font-size: 0.75rem; color: var(--text-dim);">Suggestions:</span>
+        <a id="suggest-domain" class="suggestion-link">This domain</a>
+        <a id="suggest-wildcard" class="suggestion-link">This domain and its subdomains</a>
+        <a id="suggest-url" class="suggestion-link">This exact URL</a>
+    </div>
+
+    <form id="quick-rule-form">
+        <div class="form-group">
+            <input type="text" id="pattern-input" placeholder="URL pattern" required>
+        </div>
+
+        <div class="form-group">
+            <label>Select group configuration</label>
+            <select id="group-select">
+                <option value="new">+ Create new group...</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="new-group-input-container" style="display: none;">
+            <input type="text" id="new-group-name" placeholder="New group name">
+            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem;" class="color-options-mini">
+                <div class="color-dot-select selected" data-color="blue" style="background: #1a73e8;"></div>
+                <div class="color-dot-select" data-color="red" style="background: #d93025;"></div>
+                <div class="color-dot-select" data-color="green" style="background: #1e8e3e;"></div>
+                <div class="color-dot-select" data-color="yellow" style="background: #f1c21b;"></div>
+                <div class="color-dot-select" data-color="purple" style="background: #9334e6;"></div>
+                <div class="color-dot-select" data-color="cyan" style="background: #007b83;"></div>
+                <div class="color-dot-select" data-color="orange" style="background: #fa903e;"></div>
+                <div class="color-dot-select" data-color="grey" style="background: #5f6368;"></div>
+            </div>
+            <input type="hidden" id="new-group-color" value="blue">
+        </div>
+        <style>
+            .color-dot-select {
+                width: 16px;
+                height: 16px;
+                border-radius: 50%;
+                cursor: pointer;
+                border: 2px solid transparent;
+                transition: transform 0.2s;
+            }
+
+            .color-dot-select.selected {
+                border-color: white;
+                transform: scale(1.2);
+            }
+        </style>
+
+        <div style="display: flex; gap: 0.5rem;">
+            <button type="submit" class="btn" style="flex: 1;">Save new patterns</button>
+            <button type="button" id="btn-delete-pattern" class="btn"
+                style="flex: 0 0 auto; background: #ef4444; width: auto; display: none;" title="Remove this pattern">
+                <span style="font-size: 1.2em; line-height: 1;">&times;</span>
+            </button>
+        </div>
+    </form>
+
+    <div class="footer-links">
+        <a href="#" id="open-settings" class="footer-link">⚙ More options</a>
+        <a href="#" id="view-current-rules" class="footer-link" style="display: none;">
+            <span id="current-group-icon">📁</span> Show all rules for <span id="current-group-name">...</span>
+        </a>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
