@@ -321,7 +321,7 @@ label {
   color: var(--text-dim);
 }
 
-input[type="text"], input[type="number"], textarea, select {
+input[type="text"], input[type="number"], input[type="search"], textarea, select {
   width: 100%;
   padding: 0.8rem;
   border-radius: 8px;
@@ -345,6 +345,39 @@ textarea {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 0.5rem;
+}
+
+.icon-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  max-height: 190px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.icon-search {
+  margin-bottom: 0.5rem;
+}
+
+.icon-option {
+  min-height: 40px;
+  border-radius: 8px;
+  border: 1px solid rgba(244, 241, 234, 0.1);
+  background: var(--field-bg);
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.icon-option[data-icon=""] {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.icon-option.selected {
+  border-color: var(--text-main);
+  background: #20252c;
 }
 
 .color-option {

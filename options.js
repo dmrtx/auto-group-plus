@@ -6,9 +6,12 @@ const ruleModal = document.getElementById('rule-modal');
 const ruleForm = document.getElementById('rule-form');
 const cancelBtn = document.getElementById('cancel-btn');
 const colorOptions = document.querySelectorAll('.color-option');
+const iconOptionsContainer = document.getElementById('icon-options');
+const iconSearchInput = document.getElementById('icon-search');
 const selectedColorInput = document.getElementById('selected-color');
+const selectedIconInput = document.getElementById('selected-icon');
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
-const { formatFixedTabLines, parseFixedTabLines } = AutoGroupRules;
+const { GROUP_EMOJIS, formatFixedTabLines, formatGroupTitle, normalizeGroupIcon, normalizeGroupTitle, parseFixedTabLines } = AutoGroupRules;
 const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
 
 let rules = [];
@@ -131,7 +134,7 @@ function createRuleCard(rule, orderIndex) {
 
     const name = document.createElement('span');
     name.className = 'rule-name';
-    name.textContent = rule.name;
+    name.textContent = formatGroupTitle(rule);
 
     header.append(colorDot, name);
 
@@ -313,7 +316,9 @@ function closeModal() {
     ruleModal.style.display = 'none';
     ruleForm.reset();
     document.getElementById('rule-id').value = '';
+    if (iconSearchInput) iconSearchInput.value = '';
     selectColor('blue');
+    selectIcon('');
 }
 
 function selectColor(color) {
@@ -321,6 +326,12 @@ function selectColor(color) {
     colorOptions.forEach(opt => {
         opt.classList.toggle('selected', opt.dataset.color === color);
     });
+}
+
+function selectIcon(icon) {
+    const safeIcon = normalizeGroupIcon(icon);
+    selectedIconInput.value = safeIcon;
+    renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
 }
 
 function editRule(id) {
@@ -333,7 +344,9 @@ function editRule(id) {
     document.getElementById('rule-group-order').value = Number.isInteger(rule.groupOrder) ? String(rule.groupOrder) : '';
     document.getElementById('rule-fixed-tabs').value = formatFixedTabLines(rule.fixedTabs);
     document.getElementById('rule-merge').checked = rule.merge;
+    if (iconSearchInput) iconSearchInput.value = '';
     selectColor(rule.color);
+    selectIcon(rule.icon);
 
     openModal('Edit Group Rule');
 }
@@ -352,7 +365,7 @@ async function syncBrowserGroupColor(rule) {
     const groups = await chrome.tabGroups.query({}).catch(() => []);
     await Promise.all(groups
         .filter(group => normalizeGroupName(group.title) === normalizeGroupName(rule.name))
-        .map(group => chrome.tabGroups.update(group.id, { color: rule.color }).catch(() => {})));
+        .map(group => chrome.tabGroups.update(group.id, { color: rule.color, title: formatGroupTitle(rule) }).catch(() => {})));
 }
 
 // Event Listeners
@@ -371,7 +384,7 @@ if (viewOverviewBtn) {
                 const fixed = Array.isArray(r.fixedTabs) && r.fixedTabs.length > 0
                     ? `  |  fixed: ${r.fixedTabs.map(entry => `#${entry.index} ${entry.url}`).join(', ')}`
                     : '';
-                return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${patterns}${order}${fixed}`;
+                return `• ${formatGroupTitle(r) || '(no title)'} [${r.color}]  |  patterns: ${patterns}${order}${fixed}`;
             }).join('\n') || 'No rules defined.';
 
             const groupsList = (resp.groups || []).map(g => {
@@ -408,6 +421,18 @@ colorOptions.forEach(opt => {
     opt.onclick = () => selectColor(opt.dataset.color);
 });
 
+if (iconOptionsContainer) {
+    iconOptionsContainer.onclick = (event) => {
+        const option = event.target.closest('.icon-option');
+        if (!option) return;
+        selectIcon(option.dataset.icon);
+    };
+}
+
+if (iconSearchInput) {
+    iconSearchInput.oninput = () => renderIconOptions(iconSearchInput.value);
+}
+
 ruleForm.onsubmit = async (e) => {
     e.preventDefault();
 
@@ -426,9 +451,13 @@ ruleForm.onsubmit = async (e) => {
     const fixedTabs = parseFixedTabLines(document.getElementById('rule-fixed-tabs').value);
     const groupOrder = parseGroupOrder(document.getElementById('rule-group-order').value);
     const color = selectedColorInput.value;
+    const icon = normalizeGroupIcon(selectedIconInput.value);
     const merge = document.getElementById('rule-merge').checked;
 
     const newRule = { id, name, patterns, color, merge, fixedTabs };
+    if (icon) {
+        newRule.icon = icon;
+    }
     if (groupOrder !== null) {
         newRule.groupOrder = groupOrder;
     }
@@ -452,9 +481,10 @@ window.onclick = (e) => {
 };
 
 loadData();
+renderIconOptions('');
 
 function normalizeGroupName(name) {
-    return String(name || '').trim().toLowerCase();
+    return normalizeGroupTitle(name);
 }
 
 function parseGroupOrder(value) {
@@ -474,4 +504,48 @@ async function applyGroupLayoutToOpenTabs() {
     await chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.APPLY_GROUP_LAYOUT }).catch((e) => {
         console.warn('Could not apply group layout after saving.', e);
     });
+}
+
+function renderIconOptions(query) {
+    if (!iconOptionsContainer) return;
+
+    const selectedIcon = selectedIconInput ? selectedIconInput.value : '';
+    const matches = filterEmojiOptions(query, 80);
+    const noneButton = createIconOption('', 'No icon', selectedIcon === '');
+    const buttons = [noneButton, ...matches.map(entry => createIconOption(
+        entry.emoji,
+        `${entry.label}${entry.tags && entry.tags.length ? `: ${entry.tags.join(', ')}` : ''}`,
+        selectedIcon === entry.emoji
+    ))];
+
+    iconOptionsContainer.replaceChildren(...buttons);
+}
+
+function createIconOption(icon, title, selected) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'icon-option';
+    button.dataset.icon = icon;
+    button.title = title;
+    button.textContent = icon || 'None';
+    button.classList.toggle('selected', selected);
+    return button;
+}
+
+function filterEmojiOptions(query, limit) {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    const source = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
+    if (!normalizedQuery) return source.slice(0, limit);
+
+    const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+    return source
+        .filter(entry => {
+            const haystack = [
+                entry.emoji,
+                entry.label,
+                ...(Array.isArray(entry.tags) ? entry.tags : [])
+            ].join(' ').toLowerCase();
+            return terms.every(term => haystack.includes(term));
+        })
+        .slice(0, limit);
 }

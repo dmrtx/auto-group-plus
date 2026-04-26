@@ -7,6 +7,32 @@
 
   root.AutoGroupRules = api;
 })(globalThis, function createAutoGroupRules() {
+  const FALLBACK_GROUP_ICONS = Object.freeze([
+    { emoji: '📌', label: 'pushpin', tags: ['pin', 'important'] },
+    { emoji: '⭐', label: 'star', tags: ['favorite'] },
+    { emoji: '💼', label: 'briefcase', tags: ['work', 'business'] },
+    { emoji: '📚', label: 'books', tags: ['reading', 'library'] },
+    { emoji: '🎬', label: 'clapper board', tags: ['video', 'movie'] },
+    { emoji: '🎵', label: 'musical note', tags: ['music', 'audio'] },
+    { emoji: '🎮', label: 'video game', tags: ['gaming'] },
+    { emoji: '🏠', label: 'house', tags: ['home'] },
+    { emoji: '🛠️', label: 'hammer and wrench', tags: ['tools', 'server'] },
+    { emoji: '🧪', label: 'test tube', tags: ['lab', 'testing'] },
+    { emoji: '🔒', label: 'locked', tags: ['security', 'private'] },
+    { emoji: '💬', label: 'speech balloon', tags: ['chat', 'message'] },
+    { emoji: '📰', label: 'newspaper', tags: ['news'] },
+    { emoji: '🧾', label: 'receipt', tags: ['invoice', 'billing'] },
+    { emoji: '📊', label: 'bar chart', tags: ['analytics', 'metrics'] },
+    { emoji: '🚀', label: 'rocket', tags: ['launch'] },
+    { emoji: '☁️', label: 'cloud', tags: ['cloud', 'server'] },
+    { emoji: '🧠', label: 'brain', tags: ['ideas', 'learning'] },
+    { emoji: '🔥', label: 'fire', tags: ['hot', 'active'] }
+  ]);
+  const GROUP_EMOJIS = Object.freeze(Array.isArray(globalThis.AutoGroupEmojiData)
+    ? globalThis.AutoGroupEmojiData
+    : FALLBACK_GROUP_ICONS);
+  const GROUP_ICONS = Object.freeze(['', ...GROUP_EMOJIS.map(entry => entry.emoji)]);
+
   function matchesPattern(urlStr, pattern) {
     try {
       if (!urlStr || !pattern) return false;
@@ -115,13 +141,51 @@
     return match ? match.index : null;
   }
 
+  function normalizeGroupIcon(icon) {
+    const value = String(icon || '').trim();
+    return GROUP_ICONS.includes(value) ? value : '';
+  }
+
+  function formatGroupTitle(rule) {
+    const name = String(rule && rule.name || '').trim();
+    const icon = normalizeGroupIcon(rule && rule.icon);
+    return icon ? `${icon} ${name}` : name;
+  }
+
+  function stripGroupIcon(title) {
+    let value = String(title || '').trim();
+    for (const icon of GROUP_ICONS) {
+      if (icon && value.startsWith(`${icon} `)) {
+        return value.slice(icon.length).trim();
+      }
+    }
+
+    return value.replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}]\uFE0F?\s+/u, '').trim();
+  }
+
+  function normalizeGroupTitle(title) {
+    return stripGroupIcon(title).toLowerCase();
+  }
+
+  function getGroupTitleIcon(title) {
+    const value = String(title || '').trim();
+    return GROUP_ICONS.find(icon => icon && value.startsWith(`${icon} `)) || '';
+  }
+
   return {
+    GROUP_EMOJIS,
+    GROUP_ICONS,
     findFixedTabPosition,
     findMatchingRule,
+    formatGroupTitle,
     formatFixedTabLines,
+    getGroupTitleIcon,
     isValidRule,
     matchesPattern,
     normalizeExactUrl,
-    parseFixedTabLines
+    normalizeGroupIcon,
+    normalizeGroupTitle,
+    parseFixedTabLines,
+    stripGroupIcon
   };
 });

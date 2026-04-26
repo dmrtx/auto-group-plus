@@ -1,4 +1,4 @@
-importScripts('constants.js', 'rules.js', 'grouping.js');
+importScripts('constants.js', 'emoji-data.js', 'rules.js', 'grouping.js');
 
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const {

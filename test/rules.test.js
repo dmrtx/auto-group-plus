@@ -5,8 +5,11 @@ const {
   findFixedTabPosition,
   findMatchingRule,
   formatFixedTabLines,
+  formatGroupTitle,
   isValidRule,
   matchesPattern,
+  normalizeGroupIcon,
+  normalizeGroupTitle,
   parseFixedTabLines
 } = require('../rules.js');
 
@@ -80,4 +83,13 @@ test('finds fixed tab positions by exact normalized URL or wildcard pattern', ()
   assert.equal(findFixedTabPosition(rule, 'http://192.0.2.1:9000/#/auth'), 2);
   assert.equal(findFixedTabPosition(rule, 'http://192.0.2.1:9000/projects/1'), 2);
   assert.equal(findFixedTabPosition(rule, 'https://example.com/app/other'), null);
+});
+
+test('formats and normalizes emoji group titles', () => {
+  assert.equal(formatGroupTitle({ name: 'Books', icon: '📚' }), '📚 Books');
+  assert.equal(formatGroupTitle({ name: 'Books', icon: 'not-valid' }), 'Books');
+  assert.equal(normalizeGroupIcon('📚'), '📚');
+  assert.equal(normalizeGroupIcon('not-valid'), '');
+  assert.equal(normalizeGroupTitle('📚 Books'), 'books');
+  assert.equal(normalizeGroupTitle('Books'), 'books');
 });

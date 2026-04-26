@@ -5,7 +5,15 @@ document.addEventListener('DOMContentLoaded', () => {
 let existingRules = [];
 let currentUrl = null;
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
-const { matchesPattern } = AutoGroupRules;
+const {
+    GROUP_EMOJIS,
+    formatGroupTitle,
+    getGroupTitleIcon,
+    matchesPattern,
+    normalizeGroupIcon,
+    normalizeGroupTitle,
+    stripGroupIcon
+} = AutoGroupRules;
 
 async function init() {
     // Elements
@@ -17,9 +25,12 @@ async function init() {
         newGroupContainer: document.getElementById('new-group-input-container'),
         newGroupNameInput: document.getElementById('new-group-name'),
         newGroupColorInput: document.getElementById('new-group-color'),
+        newGroupIconInput: document.getElementById('new-group-icon'),
+        newGroupIconSearchInput: document.getElementById('new-group-icon-search'),
         viewCurrentRulesBtn: document.getElementById('view-current-rules'),
         currentGroupNameSpan: document.getElementById('current-group-name'),
         colorDots: document.querySelectorAll('.color-dot-select'),
+        iconOptionsContainer: document.getElementById('emoji-options-mini'),
         suggestions: {
             domain: document.getElementById('suggest-domain'),
             wildcard: document.getElementById('suggest-wildcard'),
@@ -134,6 +145,20 @@ async function init() {
                 if (elements.newGroupColorInput) elements.newGroupColorInput.value = dot.dataset.color;
             };
         });
+    }
+
+    renderEmojiOptions(elements, '');
+
+    if (elements.iconOptionsContainer) {
+        elements.iconOptionsContainer.onclick = (event) => {
+            const option = event.target.closest('.emoji-option');
+            if (!option) return;
+            setSelectedIcon(elements, option.dataset.icon);
+        };
+    }
+
+    if (elements.newGroupIconSearchInput) {
+        elements.newGroupIconSearchInput.oninput = () => renderEmojiOptions(elements, elements.newGroupIconSearchInput.value);
     }
 
     if (elements.openSettingsBtn) {
@@ -319,7 +344,7 @@ function populateGroupSelect(selectEl, browserGroups = []) {
     existingRules.forEach(rule => {
         const option = document.createElement('option');
         option.value = rule.id;
-        option.textContent = rule.name;
+        option.textContent = formatGroupTitle(rule);
         selectEl.appendChild(option);
     });
 
@@ -392,19 +417,23 @@ function handleGroupSelect(els) {
 
     if (val === 'new') {
         els.newGroupContainer.style.display = 'block';
+        if (els.newGroupIconSearchInput) els.newGroupIconSearchInput.value = '';
         if (els.newGroupNameInput) {
             els.newGroupNameInput.value = '';
             els.newGroupNameInput.focus();
         }
         setSelectedColor(els, 'blue');
+        setSelectedIcon(els, '');
     } else if (val.startsWith('browser_group:')) {
         // It's a browser group: Treat as "New" but pre-fill
         const selectedOption = els.groupSelect.selectedOptions[0];
         const title = selectedOption ? selectedOption.dataset.title : '';
         const color = selectedOption ? selectedOption.dataset.color : 'blue';
         els.newGroupContainer.style.display = 'block';
-        if (els.newGroupNameInput) els.newGroupNameInput.value = title;
+        if (els.newGroupIconSearchInput) els.newGroupIconSearchInput.value = '';
+        if (els.newGroupNameInput) els.newGroupNameInput.value = stripGroupIcon(title);
         setSelectedColor(els, color);
+        setSelectedIcon(els, getGroupTitleIcon(title));
     } else {
         const selectedRule = existingRules.find(rule => rule.id === val);
         if (!selectedRule) {
@@ -413,8 +442,10 @@ function handleGroupSelect(els) {
         }
 
         els.newGroupContainer.style.display = 'block';
+        if (els.newGroupIconSearchInput) els.newGroupIconSearchInput.value = '';
         if (els.newGroupNameInput) els.newGroupNameInput.value = selectedRule.name || '';
         setSelectedColor(els, selectedRule.color || 'blue');
+        setSelectedIcon(els, selectedRule.icon || '');
     }
 }
 
@@ -436,6 +467,7 @@ async function handleFormSubmit(e, els) {
             return;
         }
         const color = els.newGroupColorInput ? els.newGroupColorInput.value : 'blue';
+        const icon = els.newGroupIconInput ? normalizeGroupIcon(els.newGroupIconInput.value) : '';
         const selectedOption = els.groupSelect.selectedOptions[0];
         const browserGroupId = selectedValue.startsWith('browser_group:') && selectedOption
             ? Number.parseInt(selectedOption.dataset.groupId, 10)
@@ -449,6 +481,11 @@ async function handleFormSubmit(e, els) {
             ruleIdToUpdate = existingRule.id;
             existingRule.name = name;
             existingRule.color = color;
+            if (icon) {
+                existingRule.icon = icon;
+            } else {
+                delete existingRule.icon;
+            }
             if (!existingRule.patterns.includes(pattern)) {
                 existingRule.patterns.push(pattern);
             }
@@ -463,12 +500,16 @@ async function handleFormSubmit(e, els) {
                 patterns: [pattern],
                 merge: true,
             };
+            if (icon) {
+                newRule.icon = icon;
+            }
             existingRules.push(newRule);
             ruleIdToUpdate = newRule.id;
         }
 
         if (Number.isInteger(browserGroupId)) {
-            chrome.tabGroups.update(browserGroupId, { color }).catch(() => { });
+            const updatedRule = existingRules.find(rule => rule.id === ruleIdToUpdate);
+            chrome.tabGroups.update(browserGroupId, { color, title: formatGroupTitle(updatedRule) }).catch(() => { });
         }
 
     } else {
@@ -478,6 +519,7 @@ async function handleFormSubmit(e, els) {
             const rule = existingRules[ruleIndex];
             const name = els.newGroupNameInput ? els.newGroupNameInput.value.trim() : rule.name;
             const color = els.newGroupColorInput ? els.newGroupColorInput.value : rule.color;
+            const icon = els.newGroupIconInput ? normalizeGroupIcon(els.newGroupIconInput.value) : '';
             if (!name) {
                 alert('Please enter a group name');
                 return;
@@ -485,12 +527,17 @@ async function handleFormSubmit(e, els) {
 
             rule.name = name;
             rule.color = color;
+            if (icon) {
+                rule.icon = icon;
+            } else {
+                delete rule.icon;
+            }
             // Avoid duplicates
             if (!rule.patterns.includes(pattern)) {
                 rule.patterns.push(pattern);
             }
             existingRules[ruleIndex] = rule;
-            await updateOpenGroupsColor(rule.name, rule.color);
+            await updateOpenGroupsAppearance(rule);
         }
     }
 
@@ -540,14 +587,14 @@ function showRulesForCurrentGroup(els) {
             ? '\nFixed positions:\n' + rule.fixedTabs.map(entry => `  - #${entry.index}: ${entry.url}`).join('\n')
             : '';
 
-        return `${rule.name} [${rule.color || 'blue'}]\nMerge: ${rule.merge !== false ? 'yes' : 'no'}\nPatterns:\n${patterns}${fixedTabs}`;
+        return `${formatGroupTitle(rule)} [${rule.color || 'blue'}]\nMerge: ${rule.merge !== false ? 'yes' : 'no'}\nPatterns:\n${patterns}${fixedTabs}`;
     }).join('\n\n');
 
     alert(summary);
 }
 
 function normalizeGroupName(name) {
-    return String(name || '').trim().toLowerCase();
+    return normalizeGroupTitle(name);
 }
 
 function setSelectedColor(els, color) {
@@ -559,13 +606,65 @@ function setSelectedColor(els, color) {
     });
 }
 
-async function updateOpenGroupsColor(name, color) {
-    if (!name || !color) return;
+function setSelectedIcon(els, icon) {
+    const safeIcon = normalizeGroupIcon(icon);
+    if (els.newGroupIconInput) els.newGroupIconInput.value = safeIcon;
+    renderEmojiOptions(els, els.newGroupIconSearchInput ? els.newGroupIconSearchInput.value : '');
+}
+
+function renderEmojiOptions(els, query) {
+    if (!els.iconOptionsContainer) return;
+
+    const selectedIcon = els.newGroupIconInput ? els.newGroupIconInput.value : '';
+    const matches = filterEmojiOptions(query, 60);
+    const buttons = [
+        createEmojiOption('', 'No icon', selectedIcon === ''),
+        ...matches.map(entry => createEmojiOption(
+            entry.emoji,
+            `${entry.label}${entry.tags && entry.tags.length ? `: ${entry.tags.join(', ')}` : ''}`,
+            selectedIcon === entry.emoji
+        ))
+    ];
+
+    els.iconOptionsContainer.replaceChildren(...buttons);
+}
+
+function createEmojiOption(icon, title, selected) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'emoji-option';
+    button.dataset.icon = icon;
+    button.title = title;
+    button.textContent = icon || 'None';
+    button.classList.toggle('selected', selected);
+    return button;
+}
+
+function filterEmojiOptions(query, limit) {
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    const source = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
+    if (!normalizedQuery) return source.slice(0, limit);
+
+    const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+    return source
+        .filter(entry => {
+            const haystack = [
+                entry.emoji,
+                entry.label,
+                ...(Array.isArray(entry.tags) ? entry.tags : [])
+            ].join(' ').toLowerCase();
+            return terms.every(term => haystack.includes(term));
+        })
+        .slice(0, limit);
+}
+
+async function updateOpenGroupsAppearance(rule) {
+    if (!rule || !rule.name || !rule.color) return;
 
     const groups = await chrome.tabGroups.query({}).catch(() => []);
     await Promise.all(groups
-        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(name))
-        .map(group => chrome.tabGroups.update(group.id, { color }).catch(() => {})));
+        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(rule.name))
+        .map(group => chrome.tabGroups.update(group.id, { color: rule.color, title: formatGroupTitle(rule) }).catch(() => {})));
 }
 
 function getHexForColor(colorName) {

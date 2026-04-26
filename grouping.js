@@ -2,7 +2,7 @@
   root.AutoGroupGrouping = factory(root.AutoGroupConstants, root.AutoGroupRules);
 })(globalThis, function createAutoGroupGrouping(constants, rulesApi) {
   const { MESSAGE_ACTIONS } = constants;
-  const { findFixedTabPosition, findMatchingRule } = rulesApi;
+  const { findFixedTabPosition, findMatchingRule, formatGroupTitle, normalizeGroupTitle } = rulesApi;
   const pendingMerges = {};
 
   async function groupTab(tab) {
@@ -41,9 +41,7 @@
       console.log(`[AutoGroup+] Scanning ${allGroups.length} existing groups for match: "${rule.name}"`);
 
       const existingGroup = allGroups.find(group => {
-        const groupTitle = (group.title || '').toLowerCase().trim();
-        const ruleName = rule.name.toLowerCase().trim();
-        return groupTitle === ruleName;
+        return normalizeGroupTitle(group.title) === normalizeGroupTitle(rule.name);
       });
 
       if (!existingGroup) {
@@ -55,8 +53,9 @@
 
       console.log(`[AutoGroup+] Found existing group: "${existingGroup.title}" (ID: ${existingGroup.id})`);
 
-      if (existingGroup.color !== rule.color) {
-        chrome.tabGroups.update(existingGroup.id, { color: rule.color });
+      const desiredTitle = formatGroupTitle(rule);
+      if (existingGroup.color !== rule.color || existingGroup.title !== desiredTitle) {
+        chrome.tabGroups.update(existingGroup.id, { color: rule.color, title: desiredTitle });
       }
 
       await placeTabInGroup(tab, existingGroup, rule, enableCountdown);
@@ -137,7 +136,7 @@
       tabIds: tab.id,
       createProperties: { windowId: tab.windowId }
     });
-    await chrome.tabGroups.update(groupId, { title: rule.name, color: rule.color });
+    await chrome.tabGroups.update(groupId, { title: formatGroupTitle(rule), color: rule.color });
   }
 
   async function applyFixedPosition(tabId, rule, tabUrl) {
@@ -285,7 +284,7 @@
   }
 
   function normalizeGroupName(name) {
-    return String(name || '').trim().toLowerCase();
+    return normalizeGroupTitle(name);
   }
 
   function isSplitViewTab(tab) {

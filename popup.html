@@ -81,6 +81,7 @@
         }
 
         input[type="text"],
+        input[type="search"],
         select {
             width: 100%;
             padding: 0.6rem;
@@ -149,6 +150,41 @@
             border-radius: 50%;
         }
 
+        .emoji-options-mini {
+            margin-top: 0.5rem;
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 0.35rem;
+            max-height: 118px;
+            overflow: auto;
+            padding-right: 0.15rem;
+        }
+
+        .emoji-search-mini {
+            margin-top: 0.5rem;
+        }
+
+        .emoji-option {
+            min-height: 28px;
+            border-radius: 6px;
+            border: 1px solid var(--glass-border);
+            background: var(--field-bg);
+            color: var(--text-main);
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .emoji-option[data-icon=""] {
+            grid-column: span 2;
+            color: var(--text-dim);
+            font-size: 0.7rem;
+        }
+
+        .emoji-option.selected {
+            border-color: var(--text-main);
+            background: #20252c;
+        }
+
         /* Chrome Group Colors */
         .bg-grey {
             background-color: #5f6368;
@@ -214,6 +250,11 @@
 
         <div class="form-group" id="new-group-input-container" style="display: none;">
             <input type="text" id="new-group-name" placeholder="New group name">
+            <input type="search" id="new-group-icon-search" class="emoji-search-mini" placeholder="Search emoji">
+            <div class="emoji-options-mini" id="emoji-options-mini">
+                <button type="button" class="emoji-option selected" data-icon="">None</button>
+            </div>
+            <input type="hidden" id="new-group-icon" value="">
             <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem;" class="color-options-mini">
                 <div class="color-dot-select selected" data-color="blue" style="background: #1a73e8;"></div>
                 <div class="color-dot-select" data-color="red" style="background: #d93025;"></div>
@@ -259,6 +300,7 @@
     </div>
 
     <script src="constants.js"></script>
+    <script src="emoji-data.js"></script>
     <script src="rules.js"></script>
     <script src="popup.js"></script>
 </body>
