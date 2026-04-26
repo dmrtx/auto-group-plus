@@ -20,6 +20,7 @@ const excludeWebAppsCheck = document.getElementById('setting-exclude-webapps');
 const mergeCountdownCheck = document.getElementById('setting-merge-countdown');
 const keepGroupOrderCheck = document.getElementById('setting-keep-group-order');
 const groupsBeforeTabsCheck = document.getElementById('setting-groups-before-tabs');
+const preserveSplitViewCheck = document.getElementById('setting-preserve-split-view');
 
 // Load rules & settings on startup
 async function loadData() {
@@ -34,6 +35,7 @@ async function loadData() {
     mergeCountdownCheck.checked = settings.mergeCountdown !== false; // Default true
     keepGroupOrderCheck.checked = settings.keepGroupOrder === true;
     groupsBeforeTabsCheck.checked = settings.groupsBeforeTabs === true;
+    preserveSplitViewCheck.checked = settings.preserveSplitView !== false; // Default true
 
     renderRules();
     if (settings.keepGroupOrder === true || settings.groupsBeforeTabs === true) {
@@ -46,7 +48,8 @@ async function saveSettings() {
         excludeWebApps: excludeWebAppsCheck.checked,
         mergeCountdown: mergeCountdownCheck.checked,
         keepGroupOrder: keepGroupOrderCheck.checked,
-        groupsBeforeTabs: groupsBeforeTabsCheck.checked
+        groupsBeforeTabs: groupsBeforeTabsCheck.checked,
+        preserveSplitView: preserveSplitViewCheck.checked
     };
     await chrome.storage.sync.set({ settings });
     await applyGroupLayoutToOpenTabs();
@@ -57,6 +60,7 @@ excludeWebAppsCheck.onchange = saveSettings;
 mergeCountdownCheck.onchange = saveSettings;
 keepGroupOrderCheck.onchange = saveSettings;
 groupsBeforeTabsCheck.onchange = saveSettings;
+preserveSplitViewCheck.onchange = saveSettings;
 
 function renderRules() {
     draggedRuleId = null;
@@ -292,7 +296,8 @@ async function saveRuleOrderFromDom() {
             excludeWebApps: excludeWebAppsCheck.checked,
             mergeCountdown: mergeCountdownCheck.checked,
             keepGroupOrder: true,
-            groupsBeforeTabs: groupsBeforeTabsCheck.checked
+            groupsBeforeTabs: groupsBeforeTabsCheck.checked,
+            preserveSplitView: preserveSplitViewCheck.checked
         }
     });
     await applyGroupLayoutToOpenTabs();

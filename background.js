@@ -219,6 +219,16 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (Object.prototype.hasOwnProperty.call(changeInfo, 'splitViewId')) {
+    if (isSplitViewIdActive(changeInfo.splitViewId)) {
+      clearPendingMerge(tabId);
+      return;
+    }
+
+    groupTab(tab);
+    return;
+  }
+
   if (changeInfo.url) {
     groupTab(tab);
   }
@@ -235,3 +245,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 initializeExtension('service worker load');
+
+function isSplitViewIdActive(splitViewId) {
+  if (!Number.isInteger(splitViewId)) return false;
+  const noSplitId = Number.isInteger(chrome.tabs.SPLIT_VIEW_ID_NONE)
+    ? chrome.tabs.SPLIT_VIEW_ID_NONE
+    : -1;
+  return splitViewId !== noSplitId;
+}

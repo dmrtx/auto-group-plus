@@ -15,6 +15,7 @@
 
       const excludeWebApps = settings.excludeWebApps !== false;
       const enableCountdown = settings.mergeCountdown !== false;
+      const preserveSplitView = settings.preserveSplitView !== false;
 
       if (excludeWebApps) {
         const win = await chrome.windows.get(tab.windowId);
@@ -22,6 +23,11 @@
           console.log(`[AutoGroup+] Skipping Web App/Popup window (ID: ${tab.windowId})`);
           return;
         }
+      }
+
+      if (preserveSplitView && isSplitViewTab(tab)) {
+        console.log(`[AutoGroup+] Skipping Split View tab ${tab.id}`);
+        return;
       }
 
       const rule = findMatchingRule(rules, tab.url);
@@ -139,6 +145,9 @@
     if (targetIndex === null) return;
 
     try {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      const { settings = {} } = await chrome.storage.sync.get('settings');
+      if (settings.preserveSplitView !== false && isSplitViewTab(tab)) return;
       await moveTabWithinGroup(tabId, targetIndex);
     } catch (e) {
       console.warn(`[AutoGroup+] Could not move tab ${tabId} to fixed index ${targetIndex}.`, e);
@@ -149,6 +158,8 @@
     try {
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab) return;
+      const { settings = {} } = await chrome.storage.sync.get('settings');
+      if (settings.preserveSplitView !== false && isSplitViewTab(tab)) return;
 
       await chrome.tabs.move(tabId, { windowId, index: -1 });
       await chrome.tabs.group({ tabIds: tabId, groupId });
@@ -214,6 +225,11 @@
       chrome.tabs.query({ windowId })
     ]);
 
+    if (settings.preserveSplitView !== false && tabs.some(isSplitViewTab)) {
+      console.log(`[AutoGroup+] Skipping group layout in window ${windowId} because Split View is active.`);
+      return;
+    }
+
     const groupEntries = groups
       .map(group => {
         const groupTabs = tabs
@@ -270,6 +286,14 @@
 
   function normalizeGroupName(name) {
     return String(name || '').trim().toLowerCase();
+  }
+
+  function isSplitViewTab(tab) {
+    if (!tab || !Number.isInteger(tab.splitViewId)) return false;
+    const noSplitId = Number.isInteger(chrome.tabs.SPLIT_VIEW_ID_NONE)
+      ? chrome.tabs.SPLIT_VIEW_ID_NONE
+      : -1;
+    return tab.splitViewId !== noSplitId;
   }
 
   function cancelPendingMerge(tabId) {

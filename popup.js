@@ -242,8 +242,16 @@ function buildPatternSuggestions(url) {
     if (url.pathname && url.pathname.length > 1) {
         const segments = url.pathname.split('/').filter(Boolean);
         let currentPath = url.origin;
+        let pathSuggestionCount = 0;
+        let hasDynamicSegment = false;
 
         segments.forEach(segment => {
+            if (hasDynamicSegment || pathSuggestionCount >= 2) return;
+            if (isDynamicPathSegment(segment)) {
+                hasDynamicSegment = true;
+                return;
+            }
+
             currentPath += '/' + segment;
             const pattern = `${currentPath}/*`;
             candidates.push({
@@ -251,14 +259,17 @@ function buildPatternSuggestions(url) {
                 value: pattern,
                 title: pattern
             });
+            pathSuggestionCount += 1;
         });
     }
 
-    candidates.push({
-        label: trimPatternLabel(url.href),
-        value: url.href,
-        title: 'Exact URL match'
-    });
+    if (shouldShowExactUrlSuggestion(url)) {
+        candidates.push({
+            label: trimPatternLabel(url.href),
+            value: url.href,
+            title: 'Exact URL match'
+        });
+    }
 
     return uniqueSuggestions(candidates);
 }
@@ -280,6 +291,23 @@ function trimPatternLabel(pattern) {
 
 function isIpAddress(hostname) {
     return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.includes(':');
+}
+
+function shouldShowExactUrlSuggestion(url) {
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return false;
+    if (url.href.length > 90) return false;
+    return !segments.some(isDynamicPathSegment);
+}
+
+function isDynamicPathSegment(segment) {
+    const decodedSegment = decodeURIComponent(String(segment || '')).toLowerCase();
+    if (!decodedSegment) return true;
+    if (['true', 'false', 'null', 'undefined'].includes(decodedSegment)) return true;
+    if (/^\d{4,}$/.test(decodedSegment)) return true;
+    if (/^[a-f0-9]{12,}$/i.test(decodedSegment)) return true;
+    if (/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(decodedSegment)) return true;
+    return decodedSegment.length > 24;
 }
 
 function populateGroupSelect(selectEl, browserGroups = []) {
