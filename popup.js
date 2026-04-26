@@ -252,23 +252,22 @@ function populateGroupSelect(selectEl, browserGroups = []) {
 
     // 2. Add browser groups that don't match existing rules
     // Create lookup sets for fast O(1) checking
-    const existingRuleKeys = new Set(existingRules.map(r => `${r.name}|${r.color}`));
+    const existingRuleNames = new Set(existingRules.map(r => normalizeGroupName(r.name)));
     const addedBrowserGroups = new Set();
     const uniqueBrowserGroups = [];
 
     browserGroups.forEach(bg => {
-        // Key for this group
-        const key = `${bg.title}|${bg.color}`;
+        const titleKey = normalizeGroupName(bg.title);
 
-        // Skip if matches existing rule
-        if (existingRuleKeys.has(key)) return;
+        // Skip if a saved rule already owns this group title, even when colors differ.
+        if (existingRuleNames.has(titleKey)) return;
 
         // Skip if already added to list (deduplication)
-        if (addedBrowserGroups.has(key)) return;
+        if (addedBrowserGroups.has(titleKey)) return;
 
         if (bg.title) {
             uniqueBrowserGroups.push(bg);
-            addedBrowserGroups.add(key);
+            addedBrowserGroups.add(titleKey);
         }
     });
 
@@ -280,8 +279,10 @@ function populateGroupSelect(selectEl, browserGroups = []) {
 
         uniqueBrowserGroups.forEach(bg => {
             const option = document.createElement('option');
-            // Use a special prefix to identify ad-hoc groups
-            option.value = `browser_group:${bg.title}:${bg.color}`;
+            option.value = `browser_group:${bg.id}`;
+            option.dataset.title = bg.title;
+            option.dataset.color = bg.color;
+            option.dataset.groupId = String(bg.id);
             option.textContent = `${bg.title} (Existing)`;
             selectEl.appendChild(option);
         });
@@ -295,13 +296,13 @@ function showCurrentGroupStatus(group, els) {
         els.currentGroupNameSpan.style.color = getHexForColor(group.color);
     }
 
-    const matchingRule = existingRules.find(r => r.name === group.title && r.color === group.color);
+    const matchingRule = existingRules.find(r => normalizeGroupName(r.name) === normalizeGroupName(group.title));
     if (matchingRule && els.groupSelect) {
         els.groupSelect.value = matchingRule.id;
         handleGroupSelect(els);
     } else if (group.title && els.groupSelect) {
         // Try to select the browser group option
-        const browserVal = `browser_group:${group.title}:${group.color}`;
+        const browserVal = `browser_group:${group.id}`;
         // Check if option exists (might have been added)
         const optionExists = Array.from(els.groupSelect.options).some(o => o.value === browserVal);
         if (optionExists) {
@@ -324,7 +325,9 @@ function handleGroupSelect(els) {
         }
     } else if (val.startsWith('browser_group:')) {
         // It's a browser group: Treat as "New" but pre-fill
-        const [, title, color] = val.split(':');
+        const selectedOption = els.groupSelect.selectedOptions[0];
+        const title = selectedOption ? selectedOption.dataset.title : '';
+        const color = selectedOption ? selectedOption.dataset.color : 'blue';
         els.newGroupContainer.style.display = 'block';
         if (els.newGroupNameInput) els.newGroupNameInput.value = title;
         if (els.newGroupColorInput) els.newGroupColorInput.value = color;
@@ -359,17 +362,24 @@ async function handleFormSubmit(e, els) {
             return;
         }
         const color = els.newGroupColorInput ? els.newGroupColorInput.value : 'blue';
+        const selectedOption = els.groupSelect.selectedOptions[0];
+        const browserGroupId = selectedValue.startsWith('browser_group:') && selectedOption
+            ? Number.parseInt(selectedOption.dataset.groupId, 10)
+            : null;
 
-        // Check if a rule effectively already exists (name+color match)
-        const existingRule = existingRules.find(r => r.name === name && r.color === color);
+        // Browser groups are identified by title. Changing the color should update the
+        // existing saved rule instead of creating a duplicate with the same name.
+        const existingRule = existingRules.find(r => normalizeGroupName(r.name) === normalizeGroupName(name));
 
         if (existingRule) {
             ruleIdToUpdate = existingRule.id;
+            existingRule.name = name;
+            existingRule.color = color;
             if (!existingRule.patterns.includes(pattern)) {
                 existingRule.patterns.push(pattern);
-                const idx = existingRules.indexOf(existingRule);
-                if (idx > -1) existingRules[idx] = existingRule;
             }
+            const idx = existingRules.indexOf(existingRule);
+            if (idx > -1) existingRules[idx] = existingRule;
         } else {
             // Create truly new rule
             const newRule = {
@@ -381,6 +391,10 @@ async function handleFormSubmit(e, els) {
             };
             existingRules.push(newRule);
             ruleIdToUpdate = newRule.id;
+        }
+
+        if (Number.isInteger(browserGroupId)) {
+            chrome.tabGroups.update(browserGroupId, { color }).catch(() => { });
         }
 
     } else {
@@ -412,6 +426,10 @@ async function handleFormSubmit(e, els) {
     }
 
     setTimeout(() => window.close(), 800);
+}
+
+function normalizeGroupName(name) {
+    return String(name || '').trim().toLowerCase();
 }
 
 function getHexForColor(colorName) {

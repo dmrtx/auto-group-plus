@@ -181,6 +181,15 @@ async function deleteRule(id) {
     }
 }
 
+async function syncBrowserGroupColor(rule) {
+    if (!rule || !rule.name || !rule.color) return;
+
+    const groups = await chrome.tabGroups.query({}).catch(() => []);
+    await Promise.all(groups
+        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(rule.name))
+        .map(group => chrome.tabGroups.update(group.id, { color: rule.color }).catch(() => {})));
+}
+
 // Event Listeners
 addRuleBtn.onclick = () => openModal();
 if (viewOverviewBtn) {
@@ -262,6 +271,7 @@ ruleForm.onsubmit = async (e) => {
     }
 
     await chrome.storage.sync.set({ rules });
+    await syncBrowserGroupColor(newRule);
     closeModal();
     renderRules();
 };
@@ -271,3 +281,7 @@ window.onclick = (e) => {
 };
 
 loadData();
+
+function normalizeGroupName(name) {
+    return String(name || '').trim().toLowerCase();
+}
