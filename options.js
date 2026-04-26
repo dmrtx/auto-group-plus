@@ -12,6 +12,9 @@ const { formatFixedTabLines, parseFixedTabLines } = AutoGroupRules;
 const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
 
 let rules = [];
+let draggedRuleId = null;
+let draggedRuleCard = null;
+let hasRuleOrderChanged = false;
 
 const excludeWebAppsCheck = document.getElementById('setting-exclude-webapps');
 const mergeCountdownCheck = document.getElementById('setting-merge-countdown');
@@ -33,6 +36,9 @@ async function loadData() {
     groupsBeforeTabsCheck.checked = settings.groupsBeforeTabs === true;
 
     renderRules();
+    if (settings.keepGroupOrder === true || settings.groupsBeforeTabs === true) {
+        await applyGroupLayoutToOpenTabs();
+    }
 }
 
 async function saveSettings() {
@@ -43,7 +49,7 @@ async function saveSettings() {
         groupsBeforeTabs: groupsBeforeTabsCheck.checked
     };
     await chrome.storage.sync.set({ settings });
-    await applyRulesToOpenTabs();
+    await applyGroupLayoutToOpenTabs();
 }
 
 // Settings Listeners
@@ -53,14 +59,18 @@ keepGroupOrderCheck.onchange = saveSettings;
 groupsBeforeTabsCheck.onchange = saveSettings;
 
 function renderRules() {
+    draggedRuleId = null;
+    draggedRuleCard = null;
+    hasRuleOrderChanged = false;
+    rulesContainer.classList.remove('is-ordering');
     rulesContainer.replaceChildren();
     if (rules.length === 0) {
         rulesContainer.appendChild(createEmptyState());
         return;
     }
 
-    rules.forEach(rule => {
-        rulesContainer.appendChild(createRuleCard(rule));
+    getOrderedRules().forEach((rule, index) => {
+        rulesContainer.appendChild(createRuleCard(rule, index));
     });
 
     // Attach listeners
@@ -69,6 +79,9 @@ function renderRules() {
     });
     document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.onclick = () => deleteRule(btn.dataset.id);
+    });
+    document.querySelectorAll('.rule-order-control').forEach(control => {
+        control.addEventListener('pointerdown', handleRulePointerDown);
     });
 }
 
@@ -83,9 +96,24 @@ function createEmptyState() {
     return emptyState;
 }
 
-function createRuleCard(rule) {
+function createRuleCard(rule, orderIndex) {
     const card = document.createElement('div');
     card.className = 'rule-card';
+    card.dataset.id = rule.id;
+
+    const orderControl = document.createElement('div');
+    orderControl.className = 'rule-order-control';
+    orderControl.title = 'Drag to reorder groups';
+
+    const orderNumber = document.createElement('span');
+    orderNumber.className = 'rule-order-number';
+    orderNumber.textContent = String(orderIndex);
+
+    const dragHint = document.createElement('span');
+    dragHint.className = 'rule-drag-hint';
+    dragHint.textContent = 'drag';
+
+    orderControl.append(orderNumber, dragHint);
 
     const info = document.createElement('div');
     info.className = 'rule-info';
@@ -148,9 +176,127 @@ function createRuleCard(rule) {
     deleteBtn.textContent = 'Delete';
 
     actions.append(editBtn, deleteBtn);
-    card.append(info, actions);
+    card.append(orderControl, info, actions);
 
     return card;
+}
+
+function getOrderedRules() {
+    return rules
+        .map((rule, index) => ({ rule, index, order: getEffectiveGroupOrder(rule, index) }))
+        .sort((a, b) => {
+            if (a.order !== b.order) return a.order - b.order;
+            return a.index - b.index;
+        })
+        .map(entry => entry.rule);
+}
+
+function getEffectiveGroupOrder(rule, fallbackIndex) {
+    return Number.isInteger(rule.groupOrder) && rule.groupOrder >= 0 ? rule.groupOrder : fallbackIndex;
+}
+
+function handleRulePointerDown(event) {
+    if (event.button !== undefined && event.button !== 0) return;
+
+    const card = event.currentTarget.closest('.rule-card');
+    if (!card) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    draggedRuleId = card.dataset.id;
+    draggedRuleCard = card;
+    hasRuleOrderChanged = false;
+    card.classList.add('is-dragging');
+    rulesContainer.classList.add('is-ordering');
+
+    window.addEventListener('pointermove', handleRulePointerMove);
+    window.addEventListener('pointerup', handleRulePointerEnd, { once: true });
+    window.addEventListener('pointercancel', handleRulePointerEnd, { once: true });
+}
+
+function handleRulePointerMove(event) {
+    event.preventDefault();
+    if (!draggedRuleCard) return;
+
+    const afterElement = getDragAfterElement(rulesContainer, event.clientY);
+    const nextElement = draggedRuleCard.nextElementSibling;
+
+    if (afterElement === null) {
+        if (nextElement !== null) {
+            rulesContainer.appendChild(draggedRuleCard);
+            hasRuleOrderChanged = true;
+        }
+        return;
+    }
+
+    if (afterElement !== draggedRuleCard && afterElement !== nextElement) {
+        rulesContainer.insertBefore(draggedRuleCard, afterElement);
+        hasRuleOrderChanged = true;
+    }
+}
+
+async function handleRulePointerEnd() {
+    window.removeEventListener('pointermove', handleRulePointerMove);
+    window.removeEventListener('pointercancel', handleRulePointerEnd);
+    draggedRuleCard?.classList.remove('is-dragging');
+    rulesContainer.classList.remove('is-ordering');
+
+    if (draggedRuleId && hasRuleOrderChanged) {
+        await saveRuleOrderFromDom();
+    }
+
+    draggedRuleId = null;
+    draggedRuleCard = null;
+    hasRuleOrderChanged = false;
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.rule-card:not(.is-dragging)')];
+
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        }
+
+        return closest;
+    }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+}
+
+async function saveRuleOrderFromDom() {
+    const orderedIds = [...rulesContainer.querySelectorAll('.rule-card')]
+        .map(card => card.dataset.id)
+        .filter(Boolean);
+
+    if (orderedIds.length === 0) return;
+
+    const currentRulesById = new Map(rules.map(rule => [rule.id, rule]));
+    const reorderedRules = orderedIds
+        .map(id => currentRulesById.get(id))
+        .filter(Boolean)
+        .map((rule, index) => ({ ...rule, groupOrder: index }));
+
+    const missingRules = rules
+        .filter(rule => !orderedIds.includes(rule.id))
+        .map((rule, index) => ({ ...rule, groupOrder: reorderedRules.length + index }));
+
+    rules = [...reorderedRules, ...missingRules];
+    keepGroupOrderCheck.checked = true;
+
+    await chrome.storage.sync.set({
+        rules,
+        settings: {
+            excludeWebApps: excludeWebAppsCheck.checked,
+            mergeCountdown: mergeCountdownCheck.checked,
+            keepGroupOrder: true,
+            groupsBeforeTabs: groupsBeforeTabsCheck.checked
+        }
+    });
+    await applyGroupLayoutToOpenTabs();
+    renderRules();
 }
 
 function openModal(title = 'Add Group Rule') {
@@ -316,5 +462,11 @@ function parseGroupOrder(value) {
 async function applyRulesToOpenTabs() {
     await chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REBUILD_GROUPS }).catch((e) => {
         console.warn('Could not apply rules after saving.', e);
+    });
+}
+
+async function applyGroupLayoutToOpenTabs() {
+    await chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.APPLY_GROUP_LAYOUT }).catch((e) => {
+        console.warn('Could not apply group layout after saving.', e);
     });
 }

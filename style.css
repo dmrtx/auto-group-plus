@@ -157,6 +157,10 @@ h1 {
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22);
 }
 
+.rule-card.is-dragging {
+  opacity: 0.55;
+}
+
 .rule-card::after {
   display: none;
 }
@@ -171,6 +175,68 @@ h1 {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+  flex: 1;
+}
+
+.rule-order-control {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: center;
+  min-width: 2.75rem;
+  padding-top: 0.1rem;
+  color: var(--text-dim);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.rule-order-control:active {
+  cursor: grabbing;
+}
+
+.rule-order-number {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(244, 241, 234, 0.1);
+  border-radius: 999px;
+  background: #101318;
+  color: var(--text-main);
+  font-size: 0.8rem;
+  font-weight: 720;
+}
+
+.rule-drag-hint {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+#rules-container.is-ordering .rule-card {
+  align-items: center;
+  padding: 0.85rem 1rem;
+}
+
+#rules-container.is-ordering .rule-patterns,
+#rules-container.is-ordering .rule-actions,
+#rules-container.is-ordering .rule-info > div:last-child {
+  display: none;
+}
+
+#rules-container.is-ordering .rule-name {
+  font-size: 1rem;
+}
+
+#rules-container.is-ordering .rule-order-control {
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-items: start;
+  min-width: 5rem;
+}
+
+#rules-container.is-ordering .rule-drag-hint {
+  display: inline;
 }
 
 .rule-header {

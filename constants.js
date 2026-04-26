@@ -8,6 +8,7 @@
   root.AutoGroupConstants = api;
 })(globalThis, function createAutoGroupConstants() {
   const MESSAGE_ACTIONS = Object.freeze({
+    APPLY_GROUP_LAYOUT: 'APPLY_GROUP_LAYOUT',
     CANCEL_MERGE: 'CANCEL_MERGE',
     CONFIRM_MERGE: 'CONFIRM_MERGE',
     GET_OVERVIEW: 'GET_OVERVIEW',

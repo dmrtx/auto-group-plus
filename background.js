@@ -9,6 +9,10 @@ const {
   groupTab
 } = AutoGroupGrouping;
 
+let layoutApplyTimer = null;
+let openTabsRebuildTimer = null;
+let isRebuildingOpenTabs = false;
+
 // Generate dynamic action icons so they look good on any theme
 function createPlusIcon(size) {
   const canvas = new OffscreenCanvas(size, size);
@@ -110,19 +114,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  // 4. OPTIONS PAGE / REBUILD ALL GROUPS
+  // 4. OPTIONS PAGE / APPLY SAVED GROUP ORDER
+  if (request.action === MESSAGE_ACTIONS.APPLY_GROUP_LAYOUT) {
+    (async () => {
+      try {
+        await applyGroupLayout();
+        sendResponse({ ok: true });
+      } catch (e) {
+        console.error('[AutoGroup+] Failed to apply group layout', e);
+        sendResponse({ ok: false, error: e && e.message });
+      }
+    })();
+    return true;
+  }
+
+  // 5. OPTIONS PAGE / REBUILD ALL GROUPS
   if (request.action === MESSAGE_ACTIONS.REBUILD_GROUPS) {
     (async () => {
       try {
-        const [{ rules = [], settings = {} }, allTabs] = await Promise.all([
-          chrome.storage.sync.get(['rules', 'settings']),
-          chrome.tabs.query({})
-        ]);
-        for (const tab of allTabs) {
-          await groupTab(tab);
-        }
-        await applyGroupLayout(rules, settings);
-        sendResponse({ ok: true, processed: allTabs.length });
+        const processed = await rebuildOpenTabs('manual rebuild');
+        sendResponse({ ok: true, processed });
       } catch (e) {
         console.error('[AutoGroup+] Failed to rebuild groups', e);
         sendResponse({ ok: false, error: e && e.message });
@@ -132,13 +143,78 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+function scheduleSavedLayout(reason) {
+  clearTimeout(layoutApplyTimer);
+  layoutApplyTimer = setTimeout(() => {
+    layoutApplyTimer = null;
+    applySavedLayout(reason);
+  }, 150);
+}
+
+function scheduleOpenTabsRebuild(reason) {
+  clearTimeout(openTabsRebuildTimer);
+  openTabsRebuildTimer = setTimeout(() => {
+    openTabsRebuildTimer = null;
+    rebuildOpenTabs(reason).catch((e) => {
+      console.warn(`[AutoGroup+] Could not rebuild open tabs on ${reason}.`, e);
+    });
+  }, 500);
+}
+
+async function applySavedLayout(reason) {
+  try {
+    await applyGroupLayout();
+  } catch (e) {
+    console.warn(`[AutoGroup+] Could not apply saved layout on ${reason}.`, e);
+  }
+}
+
+async function rebuildOpenTabs(reason) {
+  if (isRebuildingOpenTabs) return 0;
+
+  isRebuildingOpenTabs = true;
+  try {
+    const [{ rules = [], settings = {} }, allTabs] = await Promise.all([
+      chrome.storage.sync.get(['rules', 'settings']),
+      chrome.tabs.query({})
+    ]);
+
+    for (const tab of allTabs) {
+      await groupTab(tab);
+    }
+
+    await applyGroupLayout(rules, settings);
+    return allTabs.length;
+  } finally {
+    isRebuildingOpenTabs = false;
+  }
+}
+
+function initializeExtension(reason, rebuildTabs = false) {
+  setDynamicIcons();
+  if (rebuildTabs) {
+    scheduleOpenTabsRebuild(reason);
+    return;
+  }
+
+  scheduleSavedLayout(reason);
+}
+
 // Initialize dynamic icons on startup / install
 chrome.runtime.onStartup.addListener(() => {
-  setDynamicIcons();
+  initializeExtension('startup', true);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  setDynamicIcons();
+  initializeExtension('install/update', true);
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'sync') return;
+
+  if (changes.rules || changes.settings) {
+    scheduleSavedLayout('storage change');
+  }
 });
 
 // Listen for tab updates
@@ -157,3 +233,5 @@ chrome.tabs.onCreated.addListener((tab) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   clearPendingMerge(tabId);
 });
+
+initializeExtension('service worker load');

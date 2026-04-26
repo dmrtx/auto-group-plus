@@ -241,17 +241,22 @@
       return a.startIndex - b.startIndex;
     });
 
+    const pinnedCount = tabs.filter(tab => tab.pinned).length;
     const startIndex = settings.groupsBeforeTabs === true
-      ? 0
+      ? pinnedCount
       : Math.min(...groupEntries.map(entry => entry.startIndex));
 
     let cursor = startIndex;
     for (const entry of sortedGroups) {
-      await chrome.tabGroups.move(entry.group.id, { index: cursor }).catch((e) => {
-        console.warn(`[AutoGroup+] Could not move group "${entry.group.title}" to index ${cursor}.`, e);
-      });
+      await moveGroupTabs(entry, cursor);
       cursor += entry.tabCount;
     }
+  }
+
+  async function moveGroupTabs(entry, index) {
+    await chrome.tabGroups.move(entry.group.id, { index }).catch((e) => {
+      console.warn(`[AutoGroup+] Could not move group "${entry.group.title}" to index ${index}.`, e);
+    });
   }
 
   function getGroupOrder(group, rules) {
