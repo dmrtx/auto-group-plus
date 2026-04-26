@@ -1,36 +1,66 @@
-// Helper to match URL against patterns
-function matchesPattern(urlStr, pattern) {
-  try {
-    const url = new URL(urlStr);
-    const hostname = url.hostname.toLowerCase();
-    const cleanPattern = pattern.toLowerCase().trim();
+importScripts('rules.js');
 
-    // Exact match
-    if (urlStr === cleanPattern) return true;
+const { findMatchingRule } = AutoGroupRules;
 
-    // Domain & Subdomains (*.example.com)
-    if (cleanPattern.startsWith('*.')) {
-      const domain = cleanPattern.slice(2);
-      return hostname === domain || hostname.endsWith('.' + domain);
+// Generate dynamic action icons so they look good on any theme
+function createPlusIcon(size) {
+  const canvas = new OffscreenCanvas(size, size);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  // Transparent background
+  ctx.clearRect(0, 0, size, size);
+
+  // Blue rounded square background
+  const radius = Math.round(size * 0.22);
+  const margin = Math.round(size * 0.08);
+  const x = margin;
+  const y = margin;
+  const w = size - margin * 2;
+  const h = size - margin * 2;
+
+  ctx.fillStyle = '#1D8CF8';
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+  ctx.fill();
+
+  // White plus
+  const barThickness = Math.round(size * 0.18);
+  const center = size / 2;
+  ctx.fillStyle = '#FFFFFF';
+
+  // Vertical bar
+  ctx.fillRect(center - barThickness / 2, y + radius * 0.7, barThickness, h - radius * 1.4);
+
+  // Horizontal bar
+  ctx.fillRect(x + radius * 0.7, center - barThickness / 2, w - radius * 1.4, barThickness);
+
+  return ctx.getImageData(0, 0, size, size);
+}
+
+function setDynamicIcons() {
+  const sizes = [16, 32, 48, 64, 128];
+  const imageData = {};
+  for (const size of sizes) {
+    const data = createPlusIcon(size);
+    if (data) {
+      imageData[size] = data;
     }
-
-    // Domain only (example.com) -> should match example.com AND www.example.com
-    if (hostname === cleanPattern) return true;
-    if (hostname === 'www.' + cleanPattern) return true;
-
-    // Fallback simple glob-ish matching
-    const regexPattern = cleanPattern
-      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
-    const regex = new RegExp(`^${regexPattern}$`, 'i');
-    return regex.test(urlStr) || regex.test(hostname);
-  } catch (e) {
-    console.error('Pattern matching error', e);
-    return false;
+  }
+  if (Object.keys(imageData).length > 0) {
+    chrome.action.setIcon({ imageData }).catch?.(() => {});
   }
 }
 
-// Main logic to group a tab
 // Store pending merges: { tabId: { timeoutId, groupId, windowId } }
 const pendingMerges = {};
 
@@ -57,8 +87,9 @@ async function groupTab(tab) {
       }
     }
 
-    for (const rule of rules) {
-      if (rule.patterns.some(p => matchesPattern(tab.url, p))) {
+    const rule = findMatchingRule(rules, tab.url);
+
+    if (rule) {
 
         // Show badge match
         chrome.action.setBadgeText({ text: "MATCH" });
@@ -152,8 +183,7 @@ async function groupTab(tab) {
           const groupId = await chrome.tabs.group({ tabIds: tab.id, createProperties: { windowId: tab.windowId } });
           await chrome.tabGroups.update(groupId, { title: rule.name, color: rule.color });
         }
-        return; // Stop at first matching rule
-      }
+        return;
     }
   } catch (err) {
     const msg = err && err.message ? err.message : String(err || "");
@@ -262,6 +292,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true;
   }
+});
+
+// Initialize dynamic icons on startup / install
+chrome.runtime.onStartup.addListener(() => {
+  setDynamicIcons();
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  setDynamicIcons();
 });
 
 // Listen for tab updates

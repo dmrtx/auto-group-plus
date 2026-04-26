@@ -7,6 +7,7 @@ const ruleForm = document.getElementById('rule-form');
 const cancelBtn = document.getElementById('cancel-btn');
 const colorOptions = document.querySelectorAll('.color-option');
 const selectedColorInput = document.getElementById('selected-color');
+const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
 
 let rules = [];
 
@@ -41,38 +42,14 @@ excludeWebAppsCheck.onchange = saveSettings;
 mergeCountdownCheck.onchange = saveSettings;
 
 function renderRules() {
-    rulesContainer.innerHTML = '';
+    rulesContainer.replaceChildren();
     if (rules.length === 0) {
-        rulesContainer.innerHTML = `
-      <div style="text-align: center; padding: 3rem; color: var(--text-dim);">
-        <p>No rules defined yet. Click "Add Group Rule" to get started!</p>
-      </div>
-    `;
+        rulesContainer.appendChild(createEmptyState());
         return;
     }
 
     rules.forEach(rule => {
-        const card = document.createElement('div');
-        card.className = 'rule-card';
-        card.innerHTML = `
-      <div class="rule-info">
-        <div class="rule-header">
-          <div class="color-dot bg-${rule.color}"></div>
-          <span class="rule-name">${rule.name}</span>
-        </div>
-        <div class="rule-patterns">
-          ${rule.patterns.map(p => `<span class="pattern-tag">${p}</span>`).join('')}
-        </div>
-        <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;">
-          ${rule.merge ? '✓ Merge' : ''} ${rule.strict ? '✓ Strict' : ''}
-        </div>
-      </div>
-      <div class="rule-actions">
-        <button class="btn btn-secondary edit-btn" data-id="${rule.id}">Edit</button>
-        <button class="btn btn-secondary delete-btn" data-id="${rule.id}" style="color: #ef4444;">Delete</button>
-      </div>
-    `;
-        rulesContainer.appendChild(card);
+        rulesContainer.appendChild(createRuleCard(rule));
     });
 
     // Attach listeners
@@ -82,6 +59,72 @@ function renderRules() {
     document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.onclick = () => deleteRule(btn.dataset.id);
     });
+}
+
+function createEmptyState() {
+    const emptyState = document.createElement('div');
+    emptyState.style.cssText = 'text-align: center; padding: 3rem; color: var(--text-dim);';
+
+    const message = document.createElement('p');
+    message.textContent = 'No rules defined yet. Click "Add Group Rule" to get started!';
+
+    emptyState.appendChild(message);
+    return emptyState;
+}
+
+function createRuleCard(rule) {
+    const card = document.createElement('div');
+    card.className = 'rule-card';
+
+    const info = document.createElement('div');
+    info.className = 'rule-info';
+
+    const header = document.createElement('div');
+    header.className = 'rule-header';
+
+    const colorDot = document.createElement('div');
+    const safeColor = VALID_COLORS.has(rule.color) ? rule.color : 'blue';
+    colorDot.classList.add('color-dot', `bg-${safeColor}`);
+
+    const name = document.createElement('span');
+    name.className = 'rule-name';
+    name.textContent = rule.name;
+
+    header.append(colorDot, name);
+
+    const patterns = document.createElement('div');
+    patterns.className = 'rule-patterns';
+    (Array.isArray(rule.patterns) ? rule.patterns : []).forEach(pattern => {
+        const tag = document.createElement('span');
+        tag.className = 'pattern-tag';
+        tag.textContent = pattern;
+        patterns.appendChild(tag);
+    });
+
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;';
+    meta.textContent = rule.merge ? '✓ Merge' : '';
+
+    info.append(header, patterns, meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'rule-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-secondary edit-btn';
+    editBtn.dataset.id = rule.id;
+    editBtn.textContent = 'Edit';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn btn-secondary delete-btn';
+    deleteBtn.dataset.id = rule.id;
+    deleteBtn.style.color = '#ef4444';
+    deleteBtn.textContent = 'Delete';
+
+    actions.append(editBtn, deleteBtn);
+    card.append(info, actions);
+
+    return card;
 }
 
 function openModal(title = 'Add Group Rule') {
@@ -111,7 +154,6 @@ function editRule(id) {
     document.getElementById('rule-name').value = rule.name;
     document.getElementById('rule-patterns').value = rule.patterns.join(', ');
     document.getElementById('rule-merge').checked = rule.merge;
-    document.getElementById('rule-strict').checked = rule.strict;
     selectColor(rule.color);
 
     openModal('Edit Group Rule');
@@ -190,9 +232,8 @@ ruleForm.onsubmit = async (e) => {
         .filter(p => p.length > 0);
     const color = selectedColorInput.value;
     const merge = document.getElementById('rule-merge').checked;
-    const strict = document.getElementById('rule-strict').checked;
 
-    const newRule = { id, name, patterns, color, merge, strict };
+    const newRule = { id, name, patterns, color, merge };
 
     const existingIndex = rules.findIndex(r => r.id === id);
     if (existingIndex > -1) {

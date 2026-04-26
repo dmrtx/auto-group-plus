@@ -1,0 +1,9 @@
+{
+  "name": "autogroup-plus-extension",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "check": "node --check rules.js && node --check background.js && node --check popup.js && node --check options.js && node --check content.js",
+    "test": "node --test"
+  }
+}

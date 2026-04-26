@@ -23,22 +23,7 @@ function showCountdown(groupName, seconds) {
     style.href = chrome.runtime.getURL('content.css');
     shadow.appendChild(style);
 
-    // Create Toast UI
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-
-    toast.innerHTML = `
-    <div class="toast-header">
-      <div class="spinner-track"></div>
-      <div class="toast-message">
-        Moving to group <strong>"${groupName}"</strong> in <span id="timer">${seconds}</span>s...
-      </div>
-    </div>
-    <div class="toast-actions">
-      <button class="btn btn-cancel" id="btn-cancel">Cancel</button>
-      <button class="btn btn-primary" id="btn-move">Move Now</button>
-    </div>
-  `;
+    const toast = buildToast(groupName, seconds);
 
     shadow.appendChild(toast);
     document.body.appendChild(toastHost);
@@ -72,6 +57,50 @@ function showCountdown(groupName, seconds) {
         chrome.runtime.sendMessage({ action: 'CONFIRM_MERGE' });
         removeToast();
     };
+}
+
+function buildToast(groupName, seconds) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+
+    const header = document.createElement('div');
+    header.className = 'toast-header';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner-track';
+
+    const message = document.createElement('div');
+    message.className = 'toast-message';
+    message.append('Moving to group ');
+
+    const strong = document.createElement('strong');
+    strong.textContent = `"${groupName}"`;
+    message.append(strong, ' in ');
+
+    const timer = document.createElement('span');
+    timer.id = 'timer';
+    timer.textContent = String(seconds);
+    message.append(timer, 's...');
+
+    header.append(spinner, message);
+
+    const actions = document.createElement('div');
+    actions.className = 'toast-actions';
+
+    const cancel = document.createElement('button');
+    cancel.className = 'btn btn-cancel';
+    cancel.id = 'btn-cancel';
+    cancel.textContent = 'Cancel';
+
+    const move = document.createElement('button');
+    move.className = 'btn btn-primary';
+    move.id = 'btn-move';
+    move.textContent = 'Move Now';
+
+    actions.append(cancel, move);
+    toast.append(header, actions);
+
+    return toast;
 }
 
 function removeToast() {

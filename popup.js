@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let existingRules = [];
 let currentUrl = null;
+const { matchesPattern } = AutoGroupRules;
 
 async function init() {
     // Elements
@@ -72,16 +73,7 @@ async function init() {
             if (elements.patternInput) elements.patternInput.value = matchedPattern;
 
             if (contentEl) {
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'match-status';
-                statusDiv.style.cssText = 'background: rgba(16, 185, 129, 0.2); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; gap: 0.75rem;';
-                statusDiv.innerHTML = `
-                  <div style="background: #10b981; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;">✓</div>
-                  <div style="flex: 1;">
-                      <div style="font-weight: 600; font-size: 0.85rem; color: #6ee7b7;">Pattern Saved</div>
-                      <div style="font-size: 0.75rem; color: #d1fae5; opacity: 0.8;">Matches this page</div>
-                  </div>
-              `;
+                const statusDiv = createMatchStatus();
                 contentEl.parentNode.insertBefore(statusDiv, contentEl);
             }
 
@@ -158,23 +150,30 @@ async function init() {
     }
 }
 
-// Helper (duplicated for popup)
-function matchesPattern(urlStr, pattern) {
-    try {
-        const url = new URL(urlStr);
-        const hostname = url.hostname.toLowerCase();
-        const cleanPattern = pattern.toLowerCase().trim();
-        if (urlStr === cleanPattern) return true;
-        if (cleanPattern.startsWith('*.')) {
-            const domain = cleanPattern.slice(2);
-            return hostname === domain || hostname.endsWith('.' + domain);
-        }
-        if (hostname === cleanPattern) return true;
-        if (hostname === 'www.' + cleanPattern) return true;
-        const regexPattern = cleanPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-        const regex = new RegExp(`^${regexPattern}$`, 'i');
-        return regex.test(urlStr) || regex.test(hostname);
-    } catch (e) { return false; }
+function createMatchStatus() {
+    const statusDiv = document.createElement('div');
+    statusDiv.className = 'match-status';
+    statusDiv.style.cssText = 'background: rgba(16, 185, 129, 0.2); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; gap: 0.75rem;';
+
+    const icon = document.createElement('div');
+    icon.style.cssText = 'background: #10b981; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;';
+    icon.textContent = '✓';
+
+    const copy = document.createElement('div');
+    copy.style.flex = '1';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight: 600; font-size: 0.85rem; color: #6ee7b7;';
+    title.textContent = 'Pattern Saved';
+
+    const subtitle = document.createElement('div');
+    subtitle.style.cssText = 'font-size: 0.75rem; color: #d1fae5; opacity: 0.8;';
+    subtitle.textContent = 'Matches this page';
+
+    copy.append(title, subtitle);
+    statusDiv.append(icon, copy);
+
+    return statusDiv;
 }
 
 function setupSuggestions(els) {
@@ -184,7 +183,12 @@ function setupSuggestions(els) {
     if (!suggestionsContainer) return;
 
     // Clear existing static suggestions
-    suggestionsContainer.innerHTML = '<span style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 0.3rem;">Suggestions:</span>';
+    suggestionsContainer.replaceChildren();
+
+    const label = document.createElement('span');
+    label.style.cssText = 'font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 0.3rem;';
+    label.textContent = 'Suggestions:';
+    suggestionsContainer.appendChild(label);
 
     const hostname = currentUrl.hostname;
     // User requested "next paths only of current URL", so avoiding the "root domain" (e.g. ninjarmm.pri)
@@ -235,8 +239,7 @@ function setupSuggestions(els) {
 function populateGroupSelect(selectEl, browserGroups = []) {
     if (!selectEl) return;
     const newOption = selectEl.options[0];
-    selectEl.innerHTML = '';
-    selectEl.appendChild(newOption);
+    selectEl.replaceChildren(newOption);
 
     // 1. Add existing rules
     existingRules.forEach(rule => {
@@ -374,7 +377,6 @@ async function handleFormSubmit(e, els) {
                 color,
                 patterns: [pattern],
                 merge: true,
-                strict: false
             };
             existingRules.push(newRule);
             ruleIdToUpdate = newRule.id;
