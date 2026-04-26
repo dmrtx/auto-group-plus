@@ -195,50 +195,91 @@ function setupSuggestions(els) {
     label.textContent = 'Suggestions:';
     suggestionsContainer.appendChild(label);
 
-    const hostname = currentUrl.hostname;
-    // User requested "next paths only of current URL", so avoiding the "root domain" (e.g. ninjarmm.pri)
-    // and sticking to the specific hostname we are on.
-    const wildcardHostname = `*.${hostname}`;
+    const suggestions = buildPatternSuggestions(currentUrl);
 
-    // Helper to create link
-    const addSuggestion = (text, value, title = null) => {
+    const addSuggestion = (suggestion) => {
         const a = document.createElement('a');
         a.className = 'suggestion-link';
-        a.innerText = text;
-        if (title) a.title = title;
-        a.onclick = () => { if (els.patternInput) els.patternInput.value = value; };
+        a.innerText = suggestion.label;
+        if (suggestion.title) a.title = suggestion.title;
+        a.onclick = () => { if (els.patternInput) els.patternInput.value = suggestion.value; };
         suggestionsContainer.appendChild(a);
     };
 
-    // 1. Wildcard Hostname (e.g. *.teamcity.example.com)
-    addSuggestion(wildcardHostname, wildcardHostname);
-
-    // 2. Path segments (Iterative)
-    if (currentUrl.pathname && currentUrl.pathname.length > 1) {
-        const segments = currentUrl.pathname.split('/').filter(Boolean);
-        let currentPath = currentUrl.origin;
-
-        // Generate patterns for each path level
-        segments.forEach(segment => {
-            currentPath += '/' + segment;
-            const pattern = currentPath + '/*';
-            // Visual cleanup: remove protocol for display if it's too long
-            const displayText = pattern.replace(/^https?:\/\//, '');
-            addSuggestion(displayText, pattern, pattern);
-        });
-    }
-
-    // 4. Exact URL (Truncated)
-    const fullUrl = currentUrl.href;
-    const displayText = fullUrl.length > 90
-        ? fullUrl.substring(0, 45) + '...' + fullUrl.substring(fullUrl.length - 40)
-        : fullUrl;
-    addSuggestion(displayText, fullUrl, fullUrl);
+    suggestions.forEach(addSuggestion);
 
     // Default input value
     if (els.patternInput && !els.patternInput.value) {
-        els.patternInput.value = wildcardHostname;
+        els.patternInput.value = suggestions[0]?.value || currentUrl.hostname;
     }
+}
+
+function buildPatternSuggestions(url) {
+    const hostname = url.hostname;
+    const originPattern = `${url.origin}/*`;
+    const candidates = [
+        { label: trimPatternLabel(originPattern), value: originPattern, title: 'Match everything on this exact host and protocol' },
+        { label: hostname, value: hostname, title: 'Match this host only' }
+    ];
+
+    if (url.port) {
+        const anyPortPattern = `${url.protocol}//${hostname}:*/*`;
+        candidates.push({
+            label: trimPatternLabel(anyPortPattern),
+            value: anyPortPattern,
+            title: 'Match this host on any port'
+        });
+    }
+
+    if (!isIpAddress(hostname) && hostname.includes('.')) {
+        candidates.push({
+            label: `*.${hostname}`,
+            value: `*.${hostname}`,
+            title: 'Match subdomains of this exact host'
+        });
+    }
+
+    if (url.pathname && url.pathname.length > 1) {
+        const segments = url.pathname.split('/').filter(Boolean);
+        let currentPath = url.origin;
+
+        segments.forEach(segment => {
+            currentPath += '/' + segment;
+            const pattern = `${currentPath}/*`;
+            candidates.push({
+                label: trimPatternLabel(pattern),
+                value: pattern,
+                title: pattern
+            });
+        });
+    }
+
+    candidates.push({
+        label: trimPatternLabel(url.href),
+        value: url.href,
+        title: 'Exact URL match'
+    });
+
+    return uniqueSuggestions(candidates);
+}
+
+function uniqueSuggestions(suggestions) {
+    const seen = new Set();
+    return suggestions.filter(suggestion => {
+        if (!suggestion.value || seen.has(suggestion.value)) return false;
+        seen.add(suggestion.value);
+        return true;
+    });
+}
+
+function trimPatternLabel(pattern) {
+    const cleanPattern = pattern.replace(/^https?:\/\//, '');
+    if (cleanPattern.length <= 70) return cleanPattern;
+    return `${cleanPattern.substring(0, 34)}...${cleanPattern.substring(cleanPattern.length - 30)}`;
+}
+
+function isIpAddress(hostname) {
+    return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.includes(':');
 }
 
 function populateGroupSelect(selectEl, browserGroups = []) {
