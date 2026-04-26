@@ -155,6 +155,8 @@ h1 {
   background: #1e293b;
   width: 90%;
   max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
   border-radius: 20px;
   padding: 2rem;
   border: 1px solid var(--glass-border);
@@ -172,7 +174,7 @@ label {
   color: var(--text-dim);
 }
 
-input[type="text"], select {
+input[type="text"], textarea, select {
   width: 100%;
   padding: 0.8rem;
   border-radius: 8px;
@@ -180,6 +182,12 @@ input[type="text"], select {
   background: rgba(15, 23, 42, 0.5);
   color: white;
   font-size: 1rem;
+}
+
+textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: inherit;
 }
 
 .color-options {

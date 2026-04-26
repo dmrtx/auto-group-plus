@@ -2,7 +2,7 @@
   root.AutoGroupGrouping = factory(root.AutoGroupConstants, root.AutoGroupRules);
 })(globalThis, function createAutoGroupGrouping(constants, rulesApi) {
   const { MESSAGE_ACTIONS } = constants;
-  const { findMatchingRule } = rulesApi;
+  const { findFixedTabPosition, findMatchingRule } = rulesApi;
   const pendingMerges = {};
 
   async function groupTab(tab) {
@@ -42,6 +42,7 @@
 
       if (!existingGroup) {
         await createGroupForTab(tab, rule);
+        await applyFixedPosition(tab.id, rule, tab.url);
         return;
       }
 
@@ -70,20 +71,23 @@
       }
 
       await chrome.tabs.group({ tabIds: tab.id, groupId: existingGroup.id });
+      await applyFixedPosition(tab.id, rule, tab.url);
       return;
     }
 
     if (tab.windowId === existingGroup.windowId) {
       await chrome.tabs.group({ tabIds: tab.id, groupId: existingGroup.id });
+      await applyFixedPosition(tab.id, rule, tab.url);
       return;
     }
 
     await createGroupForTab(tab, rule);
+    await applyFixedPosition(tab.id, rule, tab.url);
   }
 
   async function mergeAcrossWindows(tab, existingGroup, rule, enableCountdown) {
     if (!enableCountdown) {
-      await performMove(tab.id, existingGroup.id, existingGroup.windowId);
+      await performMove(tab.id, existingGroup.id, existingGroup.windowId, findFixedTabPosition(rule, tab.url));
       return;
     }
 
@@ -102,20 +106,21 @@
     }
 
     if (!messageSent) {
-      await performMove(tab.id, existingGroup.id, existingGroup.windowId);
+      await performMove(tab.id, existingGroup.id, existingGroup.windowId, findFixedTabPosition(rule, tab.url));
       return;
     }
 
     const timeoutId = setTimeout(async () => {
       console.log(`[AutoGroup+] Timeout reached. Moving tab ${tab.id}.`);
-      await performMove(tab.id, existingGroup.id, existingGroup.windowId);
+      await performMove(tab.id, existingGroup.id, existingGroup.windowId, findFixedTabPosition(rule, tab.url));
       delete pendingMerges[tab.id];
     }, 5000);
 
     pendingMerges[tab.id] = {
       timeoutId,
       groupId: existingGroup.id,
-      windowId: existingGroup.windowId
+      windowId: existingGroup.windowId,
+      targetIndex: findFixedTabPosition(rule, tab.url)
     };
   }
 
@@ -127,13 +132,28 @@
     await chrome.tabGroups.update(groupId, { title: rule.name, color: rule.color });
   }
 
-  async function performMove(tabId, groupId, windowId, attempt = 1) {
+  async function applyFixedPosition(tabId, rule, tabUrl) {
+    const targetIndex = findFixedTabPosition(rule, tabUrl);
+    if (targetIndex === null) return;
+
+    try {
+      await chrome.tabs.move(tabId, { index: targetIndex });
+    } catch (e) {
+      console.warn(`[AutoGroup+] Could not move tab ${tabId} to fixed index ${targetIndex}.`, e);
+    }
+  }
+
+  async function performMove(tabId, groupId, windowId, targetIndex = null, attempt = 1) {
     try {
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab) return;
 
-      await chrome.tabs.move(tabId, { windowId, index: -1 });
+      await chrome.tabs.move(tabId, { windowId, index: targetIndex ?? -1 });
       await chrome.tabs.group({ tabIds: tabId, groupId });
+
+      if (targetIndex !== null) {
+        await chrome.tabs.move(tabId, { index: targetIndex });
+      }
 
       chrome.windows.update(windowId, { focused: true }).catch(() => {});
       chrome.tabs.update(tabId, { active: true }).catch(() => {});
@@ -141,7 +161,7 @@
       const msg = e.message || '';
       if (msg.includes('Tabs cannot be edited right now') && attempt <= 3) {
         console.warn(`[AutoGroup+] Tab dragging detected. Retrying move (Attempt ${attempt}/3)...`);
-        setTimeout(() => performMove(tabId, groupId, windowId, attempt + 1), 500 * attempt);
+        setTimeout(() => performMove(tabId, groupId, windowId, targetIndex, attempt + 1), 500 * attempt);
         return;
       }
 
@@ -166,7 +186,7 @@
     if (!pending) return false;
 
     clearTimeout(pending.timeoutId);
-    performMove(tabId, pending.groupId, pending.windowId);
+    performMove(tabId, pending.groupId, pending.windowId, pending.targetIndex);
     delete pendingMerges[tabId];
     console.log(`[AutoGroup+] Merge CONFIRMED for tab ${tabId}`);
     return true;

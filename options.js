@@ -8,6 +8,7 @@ const cancelBtn = document.getElementById('cancel-btn');
 const colorOptions = document.querySelectorAll('.color-option');
 const selectedColorInput = document.getElementById('selected-color');
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
+const { formatFixedTabLines, parseFixedTabLines } = AutoGroupRules;
 const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
 
 let rules = [];
@@ -102,9 +103,20 @@ function createRuleCard(rule) {
         patterns.appendChild(tag);
     });
 
+    const fixedTabs = Array.isArray(rule.fixedTabs) ? rule.fixedTabs : [];
+    fixedTabs.forEach(entry => {
+        const tag = document.createElement('span');
+        tag.className = 'pattern-tag';
+        tag.textContent = `#${entry.index} ${entry.url}`;
+        tag.title = 'Fixed tab position';
+        patterns.appendChild(tag);
+    });
+
     const meta = document.createElement('div');
     meta.style.cssText = 'font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;';
-    meta.textContent = rule.merge ? '✓ Merge' : '';
+    meta.textContent = [rule.merge ? '✓ Merge' : '', fixedTabs.length ? `✓ ${fixedTabs.length} fixed` : '']
+        .filter(Boolean)
+        .join('  ');
 
     info.append(header, patterns, meta);
 
@@ -154,6 +166,7 @@ function editRule(id) {
     document.getElementById('rule-id').value = rule.id;
     document.getElementById('rule-name').value = rule.name;
     document.getElementById('rule-patterns').value = rule.patterns.join(', ');
+    document.getElementById('rule-fixed-tabs').value = formatFixedTabLines(rule.fixedTabs);
     document.getElementById('rule-merge').checked = rule.merge;
     selectColor(rule.color);
 
@@ -179,7 +192,11 @@ if (viewOverviewBtn) {
             }
 
             const rulesList = (resp.rules || []).map(r => {
-                return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${r.patterns.join(', ')}`;
+                const patterns = Array.isArray(r.patterns) ? r.patterns.join(', ') : '';
+                const fixed = Array.isArray(r.fixedTabs) && r.fixedTabs.length > 0
+                    ? `  |  fixed: ${r.fixedTabs.map(entry => `#${entry.index} ${entry.url}`).join(', ')}`
+                    : '';
+                return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${patterns}${fixed}`;
             }).join('\n') || 'No rules defined.';
 
             const groupsList = (resp.groups || []).map(g => {
@@ -231,10 +248,11 @@ ruleForm.onsubmit = async (e) => {
         .split(',')
         .map(p => p.trim())
         .filter(p => p.length > 0);
+    const fixedTabs = parseFixedTabLines(document.getElementById('rule-fixed-tabs').value);
     const color = selectedColorInput.value;
     const merge = document.getElementById('rule-merge').checked;
 
-    const newRule = { id, name, patterns, color, merge };
+    const newRule = { id, name, patterns, color, merge, fixedTabs };
 
     const existingIndex = rules.findIndex(r => r.id === id);
     if (existingIndex > -1) {

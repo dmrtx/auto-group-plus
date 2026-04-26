@@ -1,7 +1,14 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { findMatchingRule, isValidRule, matchesPattern } = require('../rules.js');
+const {
+  findFixedTabPosition,
+  findMatchingRule,
+  formatFixedTabLines,
+  isValidRule,
+  matchesPattern,
+  parseFixedTabLines
+} = require('../rules.js');
 
 test('matches exact URLs case-insensitively', () => {
   assert.equal(matchesPattern('https://Example.com/Path', 'https://example.com/path'), true);
@@ -33,4 +40,37 @@ test('finds the first valid matching rule', () => {
 
   assert.equal(isValidRule(rules[0]), false);
   assert.equal(findMatchingRule(rules, 'https://app.example.com')?.id, 'work');
+});
+
+test('parses fixed tab position lines', () => {
+  assert.deepEqual(parseFixedTabLines(`
+0, https://example.com/app
+1 https://example.com/dashboard
+bad line
+2 | https://example.com/reports
+  `), [
+    { index: 0, url: 'https://example.com/app' },
+    { index: 1, url: 'https://example.com/dashboard' },
+    { index: 2, url: 'https://example.com/reports' }
+  ]);
+});
+
+test('formats fixed tab position lines', () => {
+  assert.equal(formatFixedTabLines([
+    { index: 0, url: 'https://example.com/app' },
+    { index: 1, url: 'https://example.com/dashboard' }
+  ]), '0, https://example.com/app\n1, https://example.com/dashboard');
+});
+
+test('finds fixed tab positions by exact normalized URL only', () => {
+  const rule = {
+    fixedTabs: [
+      { index: 0, url: 'https://example.com/app' },
+      { index: 1, url: 'https://example.com/app?mode=full' }
+    ]
+  };
+
+  assert.equal(findFixedTabPosition(rule, 'https://example.com/app'), 0);
+  assert.equal(findFixedTabPosition(rule, 'https://example.com/app?mode=full'), 1);
+  assert.equal(findFixedTabPosition(rule, 'https://example.com/app/other'), null);
 });

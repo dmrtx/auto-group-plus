@@ -61,9 +61,61 @@
     }) || null;
   }
 
+  function normalizeExactUrl(urlStr) {
+    try {
+      return new URL(String(urlStr || '').trim()).href;
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function parseFixedTabLines(value) {
+    return String(value || '')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => {
+        const match = line.match(/^(\d+)\s*(?:,|\||\s)\s*(.+)$/);
+        if (!match) return null;
+
+        const index = Number.parseInt(match[1], 10);
+        const url = normalizeExactUrl(match[2]);
+        if (!Number.isInteger(index) || index < 0 || !url) return null;
+
+        return { index, url };
+      })
+      .filter(Boolean);
+  }
+
+  function formatFixedTabLines(fixedTabs) {
+    if (!Array.isArray(fixedTabs)) return '';
+
+    return fixedTabs
+      .filter(entry => Number.isInteger(entry.index) && entry.index >= 0 && normalizeExactUrl(entry.url))
+      .map(entry => `${entry.index}, ${normalizeExactUrl(entry.url)}`)
+      .join('\n');
+  }
+
+  function findFixedTabPosition(rule, url) {
+    const normalizedUrl = normalizeExactUrl(url);
+    if (!normalizedUrl || !Array.isArray(rule && rule.fixedTabs)) return null;
+
+    const match = rule.fixedTabs.find(entry => {
+      return Number.isInteger(entry.index) &&
+        entry.index >= 0 &&
+        normalizeExactUrl(entry.url) === normalizedUrl;
+    });
+
+    return match ? match.index : null;
+  }
+
   return {
+    findFixedTabPosition,
     findMatchingRule,
+    formatFixedTabLines,
     isValidRule,
-    matchesPattern
+    matchesPattern,
+    normalizeExactUrl,
+    parseFixedTabLines
   };
 });
