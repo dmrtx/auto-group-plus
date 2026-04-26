@@ -137,12 +137,16 @@ async function init() {
     }
 
     if (elements.openSettingsBtn) {
-        elements.openSettingsBtn.onclick = () => {
-            if (chrome.runtime.openOptionsPage) {
-                chrome.runtime.openOptionsPage();
-            } else {
-                window.open(chrome.runtime.getURL('options.html'));
-            }
+        elements.openSettingsBtn.onclick = (event) => {
+            event.preventDefault();
+            openOptionsPage();
+        };
+    }
+
+    if (elements.viewCurrentRulesBtn) {
+        elements.viewCurrentRulesBtn.onclick = (event) => {
+            event.preventDefault();
+            showRulesForCurrentGroup(elements);
         };
     }
 
@@ -437,6 +441,40 @@ async function handleFormSubmit(e, els) {
     }
 
     setTimeout(() => window.close(), 800);
+}
+
+function openOptionsPage() {
+    const url = chrome.runtime.getURL('options.html');
+    chrome.tabs.create({ url }).catch(() => {
+        if (chrome.runtime.openOptionsPage) {
+            chrome.runtime.openOptionsPage();
+        } else {
+            window.open(url);
+        }
+    });
+}
+
+function showRulesForCurrentGroup(els) {
+    const groupName = els.currentGroupNameSpan ? els.currentGroupNameSpan.textContent : '';
+    const matchingRules = existingRules.filter(rule => normalizeGroupName(rule.name) === normalizeGroupName(groupName));
+
+    if (matchingRules.length === 0) {
+        alert(`No saved rules found for "${groupName || 'this group'}".`);
+        return;
+    }
+
+    const summary = matchingRules.map(rule => {
+        const patterns = Array.isArray(rule.patterns) && rule.patterns.length > 0
+            ? rule.patterns.map(pattern => `  - ${pattern}`).join('\n')
+            : '  - No patterns';
+        const fixedTabs = Array.isArray(rule.fixedTabs) && rule.fixedTabs.length > 0
+            ? '\nFixed positions:\n' + rule.fixedTabs.map(entry => `  - #${entry.index}: ${entry.url}`).join('\n')
+            : '';
+
+        return `${rule.name} [${rule.color || 'blue'}]\nMerge: ${rule.merge !== false ? 'yes' : 'no'}\nPatterns:\n${patterns}${fixedTabs}`;
+    }).join('\n\n');
+
+    alert(summary);
 }
 
 function normalizeGroupName(name) {

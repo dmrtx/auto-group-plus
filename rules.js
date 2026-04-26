@@ -70,21 +70,23 @@
   }
 
   function parseFixedTabLines(value) {
-    return String(value || '')
+    const parsed = [];
+
+    String(value || '')
       .split(/\r?\n/)
       .map(line => line.trim())
       .filter(Boolean)
-      .map(line => {
+      .forEach(line => {
         const match = line.match(/^(\d+)\s*(?:,|\||\s)\s*(.+)$/);
-        if (!match) return null;
+        const index = match ? Number.parseInt(match[1], 10) : parsed.length;
+        const url = normalizeExactUrl(match ? match[2] : line);
 
-        const index = Number.parseInt(match[1], 10);
-        const url = normalizeExactUrl(match[2]);
-        if (!Number.isInteger(index) || index < 0 || !url) return null;
+        if (!Number.isInteger(index) || index < 0 || !url) return;
 
-        return { index, url };
-      })
-      .filter(Boolean);
+        parsed.push({ index, url });
+      });
+
+    return parsed;
   }
 
   function formatFixedTabLines(fixedTabs) {
@@ -101,9 +103,13 @@
     if (!normalizedUrl || !Array.isArray(rule && rule.fixedTabs)) return null;
 
     const match = rule.fixedTabs.find(entry => {
+      const fixedUrl = normalizeExactUrl(entry.url);
+      const isWildcard = String(entry.url || '').includes('*');
+
       return Number.isInteger(entry.index) &&
         entry.index >= 0 &&
-        normalizeExactUrl(entry.url) === normalizedUrl;
+        fixedUrl &&
+        (isWildcard ? matchesPattern(normalizedUrl, fixedUrl) : fixedUrl === normalizedUrl);
     });
 
     return match ? match.index : null;

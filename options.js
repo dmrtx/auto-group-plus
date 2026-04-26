@@ -272,6 +272,7 @@ ruleForm.onsubmit = async (e) => {
 
     await chrome.storage.sync.set({ rules });
     await syncBrowserGroupColor(newRule);
+    await applyRulesToOpenTabs();
     closeModal();
     renderRules();
 };
@@ -284,4 +285,10 @@ loadData();
 
 function normalizeGroupName(name) {
     return String(name || '').trim().toLowerCase();
+}
+
+async function applyRulesToOpenTabs() {
+    await chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REBUILD_GROUPS }).catch((e) => {
+        console.warn('Could not apply rules after saving.', e);
+    });
 }
