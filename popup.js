@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let existingRules = [];
 let currentUrl = null;
+const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const { matchesPattern } = AutoGroupRules;
 
 async function init() {
@@ -105,7 +106,7 @@ async function init() {
                     // Trigger Regroup (which essentially re-evaluates)
                     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                         if (tabs[0]) {
-                            chrome.runtime.sendMessage({ action: 'REGROUP_TAB', tabId: tabs[0].id });
+                            chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REGROUP_TAB, tabId: tabs[0].id });
                         }
                     });
 
@@ -400,7 +401,7 @@ async function handleFormSubmit(e, els) {
     // Trigger immediate regrouping
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs[0]) {
-            chrome.runtime.sendMessage({ action: 'REGROUP_TAB', tabId: tabs[0].id });
+            chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REGROUP_TAB, tabId: tabs[0].id });
         }
     });
 

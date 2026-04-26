@@ -7,6 +7,7 @@ const ruleForm = document.getElementById('rule-form');
 const cancelBtn = document.getElementById('cancel-btn');
 const colorOptions = document.querySelectorAll('.color-option');
 const selectedColorInput = document.getElementById('selected-color');
+const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
 
 let rules = [];
@@ -171,7 +172,7 @@ async function deleteRule(id) {
 addRuleBtn.onclick = () => openModal();
 if (viewOverviewBtn) {
     viewOverviewBtn.onclick = () => {
-        chrome.runtime.sendMessage({ action: 'GET_OVERVIEW' }, (resp) => {
+        chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.GET_OVERVIEW }, (resp) => {
             if (!resp) {
                 alert('Could not load overview (no response from background).');
                 return;
@@ -200,7 +201,7 @@ if (viewOverviewBtn) {
 if (rebuildGroupsBtn) {
     rebuildGroupsBtn.onclick = () => {
         if (!confirm('Rebuild all tab groups now based on the current rules?')) return;
-        chrome.runtime.sendMessage({ action: 'REBUILD_GROUPS' }, (resp) => {
+        chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REBUILD_GROUPS }, (resp) => {
             if (!resp || !resp.ok) {
                 alert('Failed to rebuild groups.' + (resp && resp.error ? `\n${resp.error}` : ''));
                 return;

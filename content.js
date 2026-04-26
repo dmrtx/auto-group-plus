@@ -1,6 +1,8 @@
 // Listen for messages from background script
+const { MESSAGE_ACTIONS } = AutoGroupConstants;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'SHOW_COUNTDOWN') {
+    if (request.action === MESSAGE_ACTIONS.SHOW_COUNTDOWN) {
         showCountdown(request.groupName, request.seconds || 5);
     }
 });
@@ -48,13 +50,13 @@ function showCountdown(groupName, seconds) {
 
     btnCancel.onclick = () => {
         clearInterval(timerInterval);
-        chrome.runtime.sendMessage({ action: 'CANCEL_MERGE' });
+        chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.CANCEL_MERGE });
         removeToast();
     };
 
     btnMove.onclick = () => {
         clearInterval(timerInterval);
-        chrome.runtime.sendMessage({ action: 'CONFIRM_MERGE' });
+        chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.CONFIRM_MERGE });
         removeToast();
     };
 }
