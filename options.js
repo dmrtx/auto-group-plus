@@ -341,12 +341,17 @@ function selectIcon(icon) {
     if (toggleIconPickerBtn) {
         toggleIconPickerBtn.textContent = safeIcon ? 'Change emoji' : 'Add emoji';
     }
-    renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
+    if (iconPickerPanel && !iconPickerPanel.hidden) {
+        renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
+    }
 }
 
 function setIconPickerOpen(isOpen) {
     if (!iconPickerPanel) return;
     iconPickerPanel.hidden = !isOpen;
+    if (isOpen) {
+        renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
+    }
 }
 
 function editRule(id) {
@@ -503,7 +508,6 @@ window.onclick = (e) => {
 };
 
 loadData();
-renderIconOptions('');
 
 function normalizeGroupName(name) {
     return normalizeGroupTitle(name);

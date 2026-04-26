@@ -143,7 +143,9 @@
 
   function normalizeGroupIcon(icon) {
     const value = String(icon || '').trim();
-    return GROUP_ICONS.includes(value) ? value : '';
+    if (!value) return '';
+    if (GROUP_ICONS.includes(value)) return value;
+    return /\p{Extended_Pictographic}/u.test(value) ? value : '';
   }
 
   function formatGroupTitle(rule) {

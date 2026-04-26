@@ -150,8 +150,6 @@ async function init() {
         });
     }
 
-    renderEmojiOptions(elements, '');
-
     if (elements.iconOptionsContainer) {
         elements.iconOptionsContainer.onclick = (event) => {
             const option = event.target.closest('.emoji-option');
@@ -627,12 +625,17 @@ function setSelectedIcon(els, icon) {
     if (els.newGroupIconToggleBtn) {
         els.newGroupIconToggleBtn.textContent = safeIcon ? 'Change emoji' : 'Add emoji';
     }
-    renderEmojiOptions(els, els.newGroupIconSearchInput ? els.newGroupIconSearchInput.value : '');
+    if (els.newGroupIconPanel && !els.newGroupIconPanel.hidden) {
+        renderEmojiOptions(els, els.newGroupIconSearchInput ? els.newGroupIconSearchInput.value : '');
+    }
 }
 
 function setEmojiPickerOpen(els, isOpen) {
     if (!els.newGroupIconPanel) return;
     els.newGroupIconPanel.hidden = !isOpen;
+    if (isOpen) {
+        renderEmojiOptions(els, els.newGroupIconSearchInput ? els.newGroupIconSearchInput.value : '');
+    }
 }
 
 function renderEmojiOptions(els, query) {
