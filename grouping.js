@@ -43,6 +43,7 @@
       if (!existingGroup) {
         await createGroupForTab(tab, rule);
         await applyFixedPosition(tab.id, rule, tab.url);
+        await applyGroupLayout(rules, settings, tab.windowId);
         return;
       }
 
@@ -53,6 +54,7 @@
       }
 
       await placeTabInGroup(tab, existingGroup, rule, enableCountdown);
+      await applyGroupLayout(rules, settings, tab.windowId);
     } catch (err) {
       const msg = err && err.message ? err.message : String(err || '');
       if (msg.includes('No tab with id')) return;
@@ -189,6 +191,82 @@
     await chrome.tabs.move(tabId, { index: groupStartIndex + clampedIndex });
   }
 
+  async function applyGroupLayout(rulesArg = null, settingsArg = null, windowId = null) {
+    const settings = settingsArg || (await chrome.storage.sync.get('settings')).settings || {};
+    if (settings.keepGroupOrder !== true && settings.groupsBeforeTabs !== true) return;
+
+    const rules = Array.isArray(rulesArg)
+      ? rulesArg
+      : (await chrome.storage.sync.get('rules')).rules || [];
+
+    const windows = windowId === null
+      ? [...new Set((await chrome.tabs.query({})).map(tab => tab.windowId))]
+      : [windowId];
+
+    for (const currentWindowId of windows) {
+      await applyGroupLayoutForWindow(currentWindowId, rules, settings);
+    }
+  }
+
+  async function applyGroupLayoutForWindow(windowId, rules, settings) {
+    const [groups, tabs] = await Promise.all([
+      chrome.tabGroups.query({ windowId }),
+      chrome.tabs.query({ windowId })
+    ]);
+
+    const groupEntries = groups
+      .map(group => {
+        const groupTabs = tabs
+          .filter(tab => tab.groupId === group.id)
+          .sort((a, b) => a.index - b.index);
+
+        if (groupTabs.length === 0) return null;
+
+        return {
+          group,
+          startIndex: groupTabs[0].index,
+          tabCount: groupTabs.length,
+          order: getGroupOrder(group, rules)
+        };
+      })
+      .filter(Boolean);
+
+    if (groupEntries.length === 0) return;
+
+    const sortedGroups = groupEntries.slice().sort((a, b) => {
+      if (settings.keepGroupOrder === true && a.order !== b.order) {
+        return a.order - b.order;
+      }
+
+      return a.startIndex - b.startIndex;
+    });
+
+    const startIndex = settings.groupsBeforeTabs === true
+      ? 0
+      : Math.min(...groupEntries.map(entry => entry.startIndex));
+
+    let cursor = startIndex;
+    for (const entry of sortedGroups) {
+      await chrome.tabGroups.move(entry.group.id, { index: cursor }).catch((e) => {
+        console.warn(`[AutoGroup+] Could not move group "${entry.group.title}" to index ${cursor}.`, e);
+      });
+      cursor += entry.tabCount;
+    }
+  }
+
+  function getGroupOrder(group, rules) {
+    const normalizedTitle = normalizeGroupName(group.title);
+    const ruleIndex = rules.findIndex(rule => normalizeGroupName(rule.name) === normalizedTitle);
+    if (ruleIndex === -1) return Number.MAX_SAFE_INTEGER;
+
+    const explicitOrder = rules[ruleIndex].groupOrder;
+    return Number.isInteger(explicitOrder) && explicitOrder >= 0 ? explicitOrder : ruleIndex;
+  }
+
+  function normalizeGroupName(name) {
+    return String(name || '').trim().toLowerCase();
+  }
+
   function cancelPendingMerge(tabId) {
     const pending = pendingMerges[tabId];
     if (!pending) return false;
@@ -219,6 +297,7 @@
   }
 
   return {
+    applyGroupLayout,
     cancelPendingMerge,
     clearPendingMerge,
     confirmPendingMerge,

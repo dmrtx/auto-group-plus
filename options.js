@@ -15,6 +15,8 @@ let rules = [];
 
 const excludeWebAppsCheck = document.getElementById('setting-exclude-webapps');
 const mergeCountdownCheck = document.getElementById('setting-merge-countdown');
+const keepGroupOrderCheck = document.getElementById('setting-keep-group-order');
+const groupsBeforeTabsCheck = document.getElementById('setting-groups-before-tabs');
 
 // Load rules & settings on startup
 async function loadData() {
@@ -27,6 +29,8 @@ async function loadData() {
     // Apply to UI
     excludeWebAppsCheck.checked = settings.excludeWebApps !== false; // Default true
     mergeCountdownCheck.checked = settings.mergeCountdown !== false; // Default true
+    keepGroupOrderCheck.checked = settings.keepGroupOrder === true;
+    groupsBeforeTabsCheck.checked = settings.groupsBeforeTabs === true;
 
     renderRules();
 }
@@ -34,14 +38,19 @@ async function loadData() {
 async function saveSettings() {
     const settings = {
         excludeWebApps: excludeWebAppsCheck.checked,
-        mergeCountdown: mergeCountdownCheck.checked
+        mergeCountdown: mergeCountdownCheck.checked,
+        keepGroupOrder: keepGroupOrderCheck.checked,
+        groupsBeforeTabs: groupsBeforeTabsCheck.checked
     };
     await chrome.storage.sync.set({ settings });
+    await applyRulesToOpenTabs();
 }
 
 // Settings Listeners
 excludeWebAppsCheck.onchange = saveSettings;
 mergeCountdownCheck.onchange = saveSettings;
+keepGroupOrderCheck.onchange = saveSettings;
+groupsBeforeTabsCheck.onchange = saveSettings;
 
 function renderRules() {
     rulesContainer.replaceChildren();
@@ -114,7 +123,11 @@ function createRuleCard(rule) {
 
     const meta = document.createElement('div');
     meta.style.cssText = 'font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;';
-    meta.textContent = [rule.merge ? '✓ Merge' : '', fixedTabs.length ? `✓ ${fixedTabs.length} fixed` : '']
+    meta.textContent = [
+        rule.merge ? '✓ Merge' : '',
+        Number.isInteger(rule.groupOrder) ? `✓ Order ${rule.groupOrder}` : '',
+        fixedTabs.length ? `✓ ${fixedTabs.length} fixed` : ''
+    ]
         .filter(Boolean)
         .join('  ');
 
@@ -166,6 +179,7 @@ function editRule(id) {
     document.getElementById('rule-id').value = rule.id;
     document.getElementById('rule-name').value = rule.name;
     document.getElementById('rule-patterns').value = rule.patterns.join(', ');
+    document.getElementById('rule-group-order').value = Number.isInteger(rule.groupOrder) ? String(rule.groupOrder) : '';
     document.getElementById('rule-fixed-tabs').value = formatFixedTabLines(rule.fixedTabs);
     document.getElementById('rule-merge').checked = rule.merge;
     selectColor(rule.color);
@@ -202,10 +216,11 @@ if (viewOverviewBtn) {
 
             const rulesList = (resp.rules || []).map(r => {
                 const patterns = Array.isArray(r.patterns) ? r.patterns.join(', ') : '';
+                const order = Number.isInteger(r.groupOrder) ? `  |  order: ${r.groupOrder}` : '';
                 const fixed = Array.isArray(r.fixedTabs) && r.fixedTabs.length > 0
                     ? `  |  fixed: ${r.fixedTabs.map(entry => `#${entry.index} ${entry.url}`).join(', ')}`
                     : '';
-                return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${patterns}${fixed}`;
+                return `• ${r.name || '(no title)'} [${r.color}]  |  patterns: ${patterns}${order}${fixed}`;
             }).join('\n') || 'No rules defined.';
 
             const groupsList = (resp.groups || []).map(g => {
@@ -258,10 +273,14 @@ ruleForm.onsubmit = async (e) => {
         .map(p => p.trim())
         .filter(p => p.length > 0);
     const fixedTabs = parseFixedTabLines(document.getElementById('rule-fixed-tabs').value);
+    const groupOrder = parseGroupOrder(document.getElementById('rule-group-order').value);
     const color = selectedColorInput.value;
     const merge = document.getElementById('rule-merge').checked;
 
     const newRule = { id, name, patterns, color, merge, fixedTabs };
+    if (groupOrder !== null) {
+        newRule.groupOrder = groupOrder;
+    }
 
     const existingIndex = rules.findIndex(r => r.id === id);
     if (existingIndex > -1) {
@@ -285,6 +304,13 @@ loadData();
 
 function normalizeGroupName(name) {
     return String(name || '').trim().toLowerCase();
+}
+
+function parseGroupOrder(value) {
+    if (String(value || '').trim() === '') return null;
+
+    const order = Number.parseInt(value, 10);
+    return Number.isInteger(order) && order >= 0 ? order : null;
 }
 
 async function applyRulesToOpenTabs() {

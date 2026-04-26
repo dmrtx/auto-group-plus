@@ -2,6 +2,7 @@ importScripts('constants.js', 'rules.js', 'grouping.js');
 
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const {
+  applyGroupLayout,
   cancelPendingMerge,
   clearPendingMerge,
   confirmPendingMerge,
@@ -113,10 +114,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === MESSAGE_ACTIONS.REBUILD_GROUPS) {
     (async () => {
       try {
-        const allTabs = await chrome.tabs.query({});
+        const [{ rules = [], settings = {} }, allTabs] = await Promise.all([
+          chrome.storage.sync.get(['rules', 'settings']),
+          chrome.tabs.query({})
+        ]);
         for (const tab of allTabs) {
           await groupTab(tab);
         }
+        await applyGroupLayout(rules, settings);
         sendResponse({ ok: true, processed: allTabs.length });
       } catch (e) {
         console.error('[AutoGroup+] Failed to rebuild groups', e);
