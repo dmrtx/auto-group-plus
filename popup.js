@@ -323,6 +323,7 @@ function handleGroupSelect(els) {
             els.newGroupNameInput.value = '';
             els.newGroupNameInput.focus();
         }
+        setSelectedColor(els, 'blue');
     } else if (val.startsWith('browser_group:')) {
         // It's a browser group: Treat as "New" but pre-fill
         const selectedOption = els.groupSelect.selectedOptions[0];
@@ -330,17 +331,17 @@ function handleGroupSelect(els) {
         const color = selectedOption ? selectedOption.dataset.color : 'blue';
         els.newGroupContainer.style.display = 'block';
         if (els.newGroupNameInput) els.newGroupNameInput.value = title;
-        if (els.newGroupColorInput) els.newGroupColorInput.value = color;
-
-        // Select the color dot
-        if (els.colorDots) {
-            els.colorDots.forEach(d => {
-                if (d.dataset.color === color) d.classList.add('selected');
-                else d.classList.remove('selected');
-            });
-        }
+        setSelectedColor(els, color);
     } else {
-        els.newGroupContainer.style.display = 'none';
+        const selectedRule = existingRules.find(rule => rule.id === val);
+        if (!selectedRule) {
+            els.newGroupContainer.style.display = 'none';
+            return;
+        }
+
+        els.newGroupContainer.style.display = 'block';
+        if (els.newGroupNameInput) els.newGroupNameInput.value = selectedRule.name || '';
+        setSelectedColor(els, selectedRule.color || 'blue');
     }
 }
 
@@ -402,11 +403,21 @@ async function handleFormSubmit(e, els) {
         const ruleIndex = existingRules.findIndex(r => r.id === ruleIdToUpdate);
         if (ruleIndex > -1) {
             const rule = existingRules[ruleIndex];
+            const name = els.newGroupNameInput ? els.newGroupNameInput.value.trim() : rule.name;
+            const color = els.newGroupColorInput ? els.newGroupColorInput.value : rule.color;
+            if (!name) {
+                alert('Please enter a group name');
+                return;
+            }
+
+            rule.name = name;
+            rule.color = color;
             // Avoid duplicates
             if (!rule.patterns.includes(pattern)) {
                 rule.patterns.push(pattern);
             }
             existingRules[ruleIndex] = rule;
+            await updateOpenGroupsColor(rule.name, rule.color);
         }
     }
 
@@ -430,6 +441,24 @@ async function handleFormSubmit(e, els) {
 
 function normalizeGroupName(name) {
     return String(name || '').trim().toLowerCase();
+}
+
+function setSelectedColor(els, color) {
+    if (els.newGroupColorInput) els.newGroupColorInput.value = color;
+    if (!els.colorDots) return;
+
+    els.colorDots.forEach(dot => {
+        dot.classList.toggle('selected', dot.dataset.color === color);
+    });
+}
+
+async function updateOpenGroupsColor(name, color) {
+    if (!name || !color) return;
+
+    const groups = await chrome.tabGroups.query({}).catch(() => []);
+    await Promise.all(groups
+        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(name))
+        .map(group => chrome.tabGroups.update(group.id, { color }).catch(() => {})));
 }
 
 function getHexForColor(colorName) {
