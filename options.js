@@ -8,6 +8,9 @@ const cancelBtn = document.getElementById('cancel-btn');
 const colorOptions = document.querySelectorAll('.color-option');
 const iconOptionsContainer = document.getElementById('icon-options');
 const iconSearchInput = document.getElementById('icon-search');
+const iconPickerPanel = document.getElementById('icon-picker-panel');
+const toggleIconPickerBtn = document.getElementById('toggle-icon-picker');
+const selectedIconPreview = document.getElementById('selected-icon-preview');
 const selectedColorInput = document.getElementById('selected-color');
 const selectedIconInput = document.getElementById('selected-icon');
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
@@ -317,6 +320,7 @@ function closeModal() {
     ruleForm.reset();
     document.getElementById('rule-id').value = '';
     if (iconSearchInput) iconSearchInput.value = '';
+    setIconPickerOpen(false);
     selectColor('blue');
     selectIcon('');
 }
@@ -331,7 +335,18 @@ function selectColor(color) {
 function selectIcon(icon) {
     const safeIcon = normalizeGroupIcon(icon);
     selectedIconInput.value = safeIcon;
+    if (selectedIconPreview) {
+        selectedIconPreview.textContent = safeIcon ? `${safeIcon} Emoji selected` : 'No emoji';
+    }
+    if (toggleIconPickerBtn) {
+        toggleIconPickerBtn.textContent = safeIcon ? 'Change emoji' : 'Add emoji';
+    }
     renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
+}
+
+function setIconPickerOpen(isOpen) {
+    if (!iconPickerPanel) return;
+    iconPickerPanel.hidden = !isOpen;
 }
 
 function editRule(id) {
@@ -347,6 +362,7 @@ function editRule(id) {
     if (iconSearchInput) iconSearchInput.value = '';
     selectColor(rule.color);
     selectIcon(rule.icon);
+    setIconPickerOpen(Boolean(rule.icon));
 
     openModal('Edit Group Rule');
 }
@@ -426,6 +442,12 @@ if (iconOptionsContainer) {
         const option = event.target.closest('.icon-option');
         if (!option) return;
         selectIcon(option.dataset.icon);
+    };
+}
+
+if (toggleIconPickerBtn) {
+    toggleIconPickerBtn.onclick = () => {
+        setIconPickerOpen(iconPickerPanel ? iconPickerPanel.hidden : true);
     };
 }
 

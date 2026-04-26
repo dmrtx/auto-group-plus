@@ -99,6 +99,11 @@ h1 {
   background: #282e36;
 }
 
+.btn-small {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.78rem;
+}
+
 .settings-panel {
   position: relative;
   margin-bottom: 2rem;
@@ -358,6 +363,26 @@ textarea {
 
 .icon-search {
   margin-bottom: 0.5rem;
+}
+
+.icon-picker-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(244, 241, 234, 0.08);
+  border-radius: 8px;
+  background: var(--field-bg);
+}
+
+.selected-icon-preview {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.icon-picker-panel {
+  margin-top: 0.75rem;
 }
 
 .icon-option {

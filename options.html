@@ -84,13 +84,19 @@
 
         <div class="form-group">
           <label>Group Icon</label>
-          <input type="search" id="icon-search" class="icon-search" placeholder="Search emoji: book, server, music, rocket">
-          <div class="icon-options" id="icon-options">
-            <button type="button" class="icon-option selected" data-icon="">None</button>
+          <div class="icon-picker-summary">
+            <span id="selected-icon-preview" class="selected-icon-preview">No emoji</span>
+            <button type="button" id="toggle-icon-picker" class="btn btn-secondary btn-small">Add emoji</button>
+          </div>
+          <div id="icon-picker-panel" class="icon-picker-panel" hidden>
+            <input type="search" id="icon-search" class="icon-search" placeholder="Search emoji: book, server, music, rocket">
+            <div class="icon-options" id="icon-options">
+              <button type="button" class="icon-option selected" data-icon="">None</button>
+            </div>
           </div>
           <input type="hidden" id="selected-icon" value="">
           <p style="font-size: 0.75rem; color: var(--text-dim); margin-top: 0.5rem;">
-            Chrome only supports group colors, so AutoGroup+ prefixes the group title with this emoji.
+            Optional. Chrome only supports group colors, so AutoGroup+ prefixes the group title with this emoji.
           </p>
         </div>
 

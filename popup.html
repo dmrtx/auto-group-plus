@@ -164,6 +164,29 @@
             margin-top: 0.5rem;
         }
 
+        .emoji-picker-summary {
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+
+        .emoji-preview-mini {
+            color: var(--text-dim);
+            font-size: 0.78rem;
+        }
+
+        .mini-link-button {
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            background: var(--field-bg);
+            color: var(--text-main);
+            cursor: pointer;
+            padding: 0.35rem 0.5rem;
+            font-size: 0.75rem;
+        }
+
         .emoji-option {
             min-height: 28px;
             border-radius: 6px;
@@ -250,9 +273,15 @@
 
         <div class="form-group" id="new-group-input-container" style="display: none;">
             <input type="text" id="new-group-name" placeholder="New group name">
-            <input type="search" id="new-group-icon-search" class="emoji-search-mini" placeholder="Search emoji">
-            <div class="emoji-options-mini" id="emoji-options-mini">
-                <button type="button" class="emoji-option selected" data-icon="">None</button>
+            <div class="emoji-picker-summary">
+                <span id="new-group-icon-preview" class="emoji-preview-mini">No emoji</span>
+                <button type="button" id="toggle-new-group-icon-picker" class="mini-link-button">Add emoji</button>
+            </div>
+            <div id="new-group-icon-panel" hidden>
+                <input type="search" id="new-group-icon-search" class="emoji-search-mini" placeholder="Search emoji">
+                <div class="emoji-options-mini" id="emoji-options-mini">
+                    <button type="button" class="emoji-option selected" data-icon="">None</button>
+                </div>
             </div>
             <input type="hidden" id="new-group-icon" value="">
             <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem;" class="color-options-mini">
