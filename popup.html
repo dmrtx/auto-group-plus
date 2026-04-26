@@ -7,13 +7,14 @@
     <title>AutoGroup+</title>
     <style>
         :root {
-            --primary: #4f46e5;
-            --bg-dark: #1e293b;
-            --card-bg: rgba(255, 255, 255, 0.05);
-            --text-main: #f8fafc;
-            --text-dim: #94a3b8;
-            --accent: #22d3ee;
-            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #3f4a3f;
+            --primary-hover: #4b594b;
+            --bg-dark: #181c22;
+            --field-bg: #101318;
+            --text-main: #f4f1ea;
+            --text-dim: #8f8a82;
+            --accent: #a7b09a;
+            --glass-border: rgba(244, 241, 234, 0.1);
         }
 
         * {
@@ -37,7 +38,8 @@
         }
 
         h2 {
-            font-size: 1rem;
+            font-size: 1.05rem;
+            letter-spacing: -0.02em;
             margin: 0;
         }
 
@@ -84,8 +86,8 @@
             padding: 0.6rem;
             border-radius: 6px;
             border: 1px solid var(--glass-border);
-            background: rgba(15, 23, 42, 0.5);
-            color: white;
+            background: var(--field-bg);
+            color: var(--text-main);
             font-size: 0.85rem;
             box-sizing: border-box;
         }
@@ -95,19 +97,19 @@
             width: 100%;
             padding: 0.6rem;
             background: var(--primary);
-            color: white;
+            color: var(--text-main);
             text-align: center;
             text-decoration: none;
             border-radius: 6px;
-            border: none;
+            border: 1px solid rgba(244, 241, 234, 0.1);
             font-weight: 600;
             font-size: 0.85rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: background 0.18s, border-color 0.18s;
         }
 
         .btn:hover {
-            filter: brightness(1.1);
+            background: var(--primary-hover);
         }
 
         .footer-links {

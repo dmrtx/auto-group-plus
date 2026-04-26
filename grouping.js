@@ -137,7 +137,7 @@
     if (targetIndex === null) return;
 
     try {
-      await chrome.tabs.move(tabId, { index: targetIndex });
+      await moveTabWithinGroup(tabId, targetIndex);
     } catch (e) {
       console.warn(`[AutoGroup+] Could not move tab ${tabId} to fixed index ${targetIndex}.`, e);
     }
@@ -148,11 +148,11 @@
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab) return;
 
-      await chrome.tabs.move(tabId, { windowId, index: targetIndex ?? -1 });
+      await chrome.tabs.move(tabId, { windowId, index: -1 });
       await chrome.tabs.group({ tabIds: tabId, groupId });
 
       if (targetIndex !== null) {
-        await chrome.tabs.move(tabId, { index: targetIndex });
+        await moveTabWithinGroup(tabId, targetIndex);
       }
 
       chrome.windows.update(windowId, { focused: true }).catch(() => {});
@@ -169,6 +169,24 @@
 
       console.error('Move failed', e);
     }
+  }
+
+  async function moveTabWithinGroup(tabId, targetIndex) {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab || tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) return;
+
+    const groupTabs = await chrome.tabs.query({
+      windowId: tab.windowId,
+      groupId: tab.groupId
+    });
+
+    if (groupTabs.length === 0) return;
+
+    groupTabs.sort((a, b) => a.index - b.index);
+
+    const groupStartIndex = groupTabs[0].index;
+    const clampedIndex = Math.min(targetIndex, groupTabs.length - 1);
+    await chrome.tabs.move(tabId, { index: groupStartIndex + clampedIndex });
   }
 
   function cancelPendingMerge(tabId) {
