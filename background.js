@@ -1,4 +1,4 @@
-importScripts('constants.js', 'rules.js', 'grouping.js');
+importScripts('constants.js', 'rules.js', 'grouping.js', 'diagnostics.js');
 
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const {
@@ -8,6 +8,8 @@ const {
   confirmPendingMerge,
   groupTab
 } = AutoGroupGrouping;
+const diagnosticsApi = globalThis.AutoGroupDiagnostics;
+const backgroundLogger = diagnosticsApi ? diagnosticsApi.createLogger('background') : null;
 
 let layoutApplyTimer = null;
 let openTabsRebuildTimer = null;
@@ -15,6 +17,10 @@ let isRebuildingOpenTabs = false;
 
 // Generate dynamic action icons so they look good on any theme
 function createPlusIcon(size) {
+  if (typeof OffscreenCanvas === 'undefined') {
+    return null;
+  }
+
   const canvas = new OffscreenCanvas(size, size);
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
@@ -59,21 +65,31 @@ function createPlusIcon(size) {
 }
 
 function setDynamicIcons() {
-  const sizes = [16, 32, 48, 64, 128];
-  const imageData = {};
-  for (const size of sizes) {
-    const data = createPlusIcon(size);
-    if (data) {
-      imageData[size] = data;
+  try {
+    const sizes = [16, 32, 48, 64, 128];
+    const imageData = {};
+    for (const size of sizes) {
+      const data = createPlusIcon(size);
+      if (data) {
+        imageData[size] = data;
+      }
     }
-  }
-  if (Object.keys(imageData).length > 0) {
-    chrome.action.setIcon({ imageData }).catch?.(() => {});
+
+    if (Object.keys(imageData).length > 0) {
+      chrome.action.setIcon({ imageData }).catch?.(() => {});
+    }
+  } catch (error) {
+    console.warn('[AutoGroup+] Could not generate dynamic action icons.', error);
   }
 }
 
 // Consolidated Message Listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  backgroundLogger?.debug('Received runtime message', {
+    action: request && request.action,
+    hasTabSender: Boolean(sender && sender.tab)
+  });
+
   // 1. CONTENT SCRIPT MESSAGES (Cancel/Confirm Merge)
   if (request.action === MESSAGE_ACTIONS.CANCEL_MERGE || request.action === MESSAGE_ACTIONS.CONFIRM_MERGE) {
     if (!sender.tab) return;
@@ -191,13 +207,19 @@ async function rebuildOpenTabs(reason) {
 }
 
 function initializeExtension(reason, rebuildTabs = false) {
-  setDynamicIcons();
-  if (rebuildTabs) {
-    scheduleOpenTabsRebuild(reason);
-    return;
-  }
+  try {
+    backgroundLogger?.info('Initializing extension', { reason, rebuildTabs });
+    setDynamicIcons();
+    if (rebuildTabs) {
+      scheduleOpenTabsRebuild(reason);
+      return;
+    }
 
-  scheduleSavedLayout(reason);
+    scheduleSavedLayout(reason);
+  } catch (error) {
+    backgroundLogger?.error('Initialization failed', { reason, error });
+    console.error(`[AutoGroup+] Initialization failed during ${reason}.`, error);
+  }
 }
 
 // Initialize dynamic icons on startup / install

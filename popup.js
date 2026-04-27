@@ -1,5 +1,22 @@
+const diagnosticsApi = globalThis.AutoGroupDiagnostics;
+const popupLogger = diagnosticsApi ? diagnosticsApi.createLogger('popup') : null;
+
+window.addEventListener('error', (event) => {
+    popupLogger?.error('Unhandled window error', {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno
+    });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    popupLogger?.error('Unhandled promise rejection', event.reason);
+});
+
 document.addEventListener('DOMContentLoaded', () => {
-    init().catch(e => console.error("Init failed:", e));
+    popupLogger?.info('DOMContentLoaded fired');
+    init().catch(e => handlePopupFatalError(e));
 });
 
 let existingRules = [];
@@ -14,8 +31,12 @@ const {
     normalizeGroupTitle,
     stripGroupIcon
 } = AutoGroupRules;
+let emojiPickerOptions = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
+let emojiDataLoadPromise = null;
 
 async function init() {
+    popupLogger?.info('Popup init started');
+
     // Elements
     const elements = {
         patternInput: document.getElementById('pattern-input'),
@@ -47,15 +68,27 @@ async function init() {
         chrome.storage.sync.get('rules'),
         chrome.tabGroups.query({})
     ]);
+    popupLogger?.info('Initial popup data loaded', {
+        activeTabCount: Array.isArray(tabs) ? tabs.length : 0,
+        ruleCount: Array.isArray(storageData.rules) ? storageData.rules.length : 0,
+        browserGroupCount: Array.isArray(browserGroups) ? browserGroups.length : 0
+    });
 
     // 1. Process Tab
     const tab = tabs[0];
-    if (!tab) return;
+    if (!tab) {
+        popupLogger?.warn('Popup init aborted because no active tab was found');
+        return;
+    }
 
     if (tab.url) {
-        currentUrl = new URL(tab.url);
-        // Only run suggestion logic if we have the URL
-        setupSuggestions(elements);
+        popupLogger?.debug('Processing active tab URL', { url: tab.url });
+        try {
+            currentUrl = new URL(tab.url);
+            setupSuggestions(elements);
+        } catch (error) {
+            popupLogger?.warn('Could not parse current tab URL', { url: tab.url, error });
+        }
     }
 
     // 2. Process Rules
@@ -159,8 +192,8 @@ async function init() {
     }
 
     if (elements.newGroupIconToggleBtn) {
-        elements.newGroupIconToggleBtn.onclick = () => {
-            setEmojiPickerOpen(elements, elements.newGroupIconPanel ? elements.newGroupIconPanel.hidden : true);
+        elements.newGroupIconToggleBtn.onclick = async () => {
+            await setEmojiPickerOpen(elements, elements.newGroupIconPanel ? elements.newGroupIconPanel.hidden : true);
         };
     }
 
@@ -185,6 +218,8 @@ async function init() {
     if (elements.quickRuleForm) {
         elements.quickRuleForm.onsubmit = (e) => handleFormSubmit(e, elements);
     }
+
+    popupLogger?.info('Popup init completed');
 }
 
 function createMatchStatus() {
@@ -570,6 +605,7 @@ async function handleFormSubmit(e, els) {
 }
 
 function openOptionsPage() {
+    popupLogger?.info('Opening options page');
     const url = chrome.runtime.getURL('options.html');
     chrome.tabs.create({ url }).catch(() => {
         if (chrome.runtime.openOptionsPage) {
@@ -630,10 +666,11 @@ function setSelectedIcon(els, icon) {
     }
 }
 
-function setEmojiPickerOpen(els, isOpen) {
+async function setEmojiPickerOpen(els, isOpen) {
     if (!els.newGroupIconPanel) return;
     els.newGroupIconPanel.hidden = !isOpen;
     if (isOpen) {
+        await ensureEmojiPickerDataLoaded();
         renderEmojiOptions(els, els.newGroupIconSearchInput ? els.newGroupIconSearchInput.value : '');
     }
 }
@@ -668,7 +705,7 @@ function createEmojiOption(icon, title, selected) {
 
 function filterEmojiOptions(query, limit) {
     const normalizedQuery = String(query || '').trim().toLowerCase();
-    const source = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
+    const source = Array.isArray(emojiPickerOptions) ? emojiPickerOptions : [];
     if (!normalizedQuery) return source.slice(0, limit);
 
     const terms = normalizedQuery.split(/\s+/).filter(Boolean);
@@ -684,6 +721,28 @@ function filterEmojiOptions(query, limit) {
         .slice(0, limit);
 }
 
+async function ensureEmojiPickerDataLoaded() {
+    if (Array.isArray(globalThis.AutoGroupEmojiData) && globalThis.AutoGroupEmojiData.length > 0) {
+        emojiPickerOptions = globalThis.AutoGroupEmojiData;
+        return emojiPickerOptions;
+    }
+
+    if (!emojiDataLoadPromise) {
+        emojiDataLoadPromise = new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'emoji-data.js';
+            script.onload = () => {
+                emojiPickerOptions = Array.isArray(globalThis.AutoGroupEmojiData) ? globalThis.AutoGroupEmojiData : emojiPickerOptions;
+                resolve(emojiPickerOptions);
+            };
+            script.onerror = () => resolve(emojiPickerOptions);
+            document.head.appendChild(script);
+        });
+    }
+
+    return emojiDataLoadPromise;
+}
+
 async function updateOpenGroupsAppearance(rule) {
     if (!rule || !rule.name || !rule.color) return;
 
@@ -691,6 +750,35 @@ async function updateOpenGroupsAppearance(rule) {
     await Promise.all(groups
         .filter(group => normalizeGroupName(group.title) === normalizeGroupName(rule.name))
         .map(group => chrome.tabGroups.update(group.id, { color: rule.color, title: formatGroupTitle(rule) }).catch(() => {})));
+}
+
+function handlePopupFatalError(error) {
+    popupLogger?.error('Popup init failed', error);
+    console.error('Init failed:', error);
+
+    const body = document.body;
+    if (!body) return;
+
+    body.innerHTML = `
+        <div style="padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#181c22;color:#f4f1ea;min-width:320px">
+            <div style="font-size:14px;font-weight:600;margin-bottom:8px">AutoGroup+ popup failed</div>
+            <div style="font-size:12px;line-height:1.5;color:#d6d3cd;margin-bottom:12px">
+                ${escapeHtml(error && error.message ? error.message : String(error || 'Unknown error'))}
+            </div>
+            <div style="font-size:11px;color:#8f8a82">
+                Check the popup console and the persisted diagnostics in chrome.storage.local.debugLogs.
+            </div>
+        </div>
+    `;
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 function getHexForColor(colorName) {

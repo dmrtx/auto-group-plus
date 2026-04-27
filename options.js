@@ -16,6 +16,8 @@ const selectedIconInput = document.getElementById('selected-icon');
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const { GROUP_EMOJIS, formatFixedTabLines, formatGroupTitle, normalizeGroupIcon, normalizeGroupTitle, parseFixedTabLines } = AutoGroupRules;
 const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
+let emojiPickerOptions = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
+let emojiDataLoadPromise = null;
 
 let rules = [];
 let draggedRuleId = null;
@@ -44,9 +46,6 @@ async function loadData() {
     preserveSplitViewCheck.checked = settings.preserveSplitView !== false; // Default true
 
     renderRules();
-    if (settings.keepGroupOrder === true || settings.groupsBeforeTabs === true) {
-        await applyGroupLayoutToOpenTabs();
-    }
 }
 
 async function saveSettings() {
@@ -346,10 +345,11 @@ function selectIcon(icon) {
     }
 }
 
-function setIconPickerOpen(isOpen) {
+async function setIconPickerOpen(isOpen) {
     if (!iconPickerPanel) return;
     iconPickerPanel.hidden = !isOpen;
     if (isOpen) {
+        await ensureEmojiPickerDataLoaded();
         renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
     }
 }
@@ -451,8 +451,8 @@ if (iconOptionsContainer) {
 }
 
 if (toggleIconPickerBtn) {
-    toggleIconPickerBtn.onclick = () => {
-        setIconPickerOpen(iconPickerPanel ? iconPickerPanel.hidden : true);
+    toggleIconPickerBtn.onclick = async () => {
+        await setIconPickerOpen(iconPickerPanel ? iconPickerPanel.hidden : true);
     };
 }
 
@@ -560,7 +560,7 @@ function createIconOption(icon, title, selected) {
 
 function filterEmojiOptions(query, limit) {
     const normalizedQuery = String(query || '').trim().toLowerCase();
-    const source = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
+    const source = Array.isArray(emojiPickerOptions) ? emojiPickerOptions : [];
     if (!normalizedQuery) return source.slice(0, limit);
 
     const terms = normalizedQuery.split(/\s+/).filter(Boolean);
@@ -574,4 +574,26 @@ function filterEmojiOptions(query, limit) {
             return terms.every(term => haystack.includes(term));
         })
         .slice(0, limit);
+}
+
+async function ensureEmojiPickerDataLoaded() {
+    if (Array.isArray(globalThis.AutoGroupEmojiData) && globalThis.AutoGroupEmojiData.length > 0) {
+        emojiPickerOptions = globalThis.AutoGroupEmojiData;
+        return emojiPickerOptions;
+    }
+
+    if (!emojiDataLoadPromise) {
+        emojiDataLoadPromise = new Promise((resolve) => {
+            const script = document.createElement('script');
+            script.src = 'emoji-data.js';
+            script.onload = () => {
+                emojiPickerOptions = Array.isArray(globalThis.AutoGroupEmojiData) ? globalThis.AutoGroupEmojiData : emojiPickerOptions;
+                resolve(emojiPickerOptions);
+            };
+            script.onerror = () => resolve(emojiPickerOptions);
+            document.head.appendChild(script);
+        });
+    }
+
+    return emojiDataLoadPromise;
 }
