@@ -2,6 +2,7 @@ const rulesContainer = document.getElementById('rules-container');
 const addRuleBtn = document.getElementById('add-rule-btn');
 const viewOverviewBtn = document.getElementById('view-overview-btn');
 const rebuildGroupsBtn = document.getElementById('rebuild-groups-btn');
+const generateRulesFromGroupsBtn = document.getElementById('generate-rules-from-groups-btn');
 const exportConfigBtn = document.getElementById('export-config-btn');
 const importConfigBtn = document.getElementById('import-config-btn');
 const importConfigFileInput = document.getElementById('import-config-file');
@@ -17,7 +18,16 @@ const selectedIconPreview = document.getElementById('selected-icon-preview');
 const selectedColorInput = document.getElementById('selected-color');
 const selectedIconInput = document.getElementById('selected-icon');
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
-const { GROUP_EMOJIS, formatFixedTabLines, formatGroupTitle, normalizeGroupIcon, normalizeGroupTitle, parseFixedTabLines } = AutoGroupRules;
+const {
+    GROUP_EMOJIS,
+    formatFixedTabLines,
+    formatGroupTitle,
+    getGroupTitleIcon,
+    normalizeGroupIcon,
+    normalizeGroupTitle,
+    parseFixedTabLines,
+    stripGroupIcon
+} = AutoGroupRules;
 const VALID_COLORS = new Set(['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange']);
 let emojiPickerOptions = Array.isArray(GROUP_EMOJIS) ? GROUP_EMOJIS : [];
 let emojiDataLoadPromise = null;
@@ -358,14 +368,14 @@ function editRule(id) {
 
     document.getElementById('rule-id').value = rule.id;
     document.getElementById('rule-name').value = rule.name;
-    document.getElementById('rule-patterns').value = rule.patterns.join(', ');
+    document.getElementById('rule-patterns').value = formatPatternLines(rule.patterns);
     document.getElementById('rule-group-order').value = Number.isInteger(rule.groupOrder) ? String(rule.groupOrder) : '';
     document.getElementById('rule-fixed-tabs').value = formatFixedTabLines(rule.fixedTabs);
     document.getElementById('rule-merge').checked = rule.merge;
     if (iconSearchInput) iconSearchInput.value = '';
     selectColor(rule.color);
     selectIcon(rule.icon);
-    setIconPickerOpen(Boolean(rule.icon));
+    setIconPickerOpen(false);
 
     openModal('Edit Group Rule');
 }
@@ -434,6 +444,11 @@ if (rebuildGroupsBtn) {
         });
     };
 }
+if (generateRulesFromGroupsBtn) {
+    generateRulesFromGroupsBtn.onclick = async () => {
+        await generateRulesFromOpenGroups();
+    };
+}
 if (exportConfigBtn) {
     exportConfigBtn.onclick = () => exportConfiguration();
 }
@@ -484,9 +499,9 @@ ruleForm.onsubmit = async (e) => {
     }
 
     const patterns = document.getElementById('rule-patterns').value
-        .split(',')
+        .split(/\r?\n/)
         .map(p => p.trim())
-        .filter(p => p.length > 0);
+        .filter((pattern, index, list) => pattern.length > 0 && list.indexOf(pattern) === index);
     const fixedTabs = parseFixedTabLines(document.getElementById('rule-fixed-tabs').value);
     const groupOrder = parseGroupOrder(document.getElementById('rule-group-order').value);
     const color = selectedColorInput.value;
@@ -564,6 +579,130 @@ async function exportConfiguration() {
     anchor.click();
     anchor.remove();
     URL.revokeObjectURL(url);
+}
+
+async function generateRulesFromOpenGroups() {
+    if (!confirm('Analyze the currently open tab groups and create rules for groups that do not already exist?')) {
+        return;
+    }
+
+    const [groups, tabs] = await Promise.all([
+        chrome.tabGroups.query({}).catch(() => []),
+        chrome.tabs.query({}).catch(() => [])
+    ]);
+
+    const existingNames = new Set(rules.map(rule => normalizeGroupName(rule.name)));
+    const createdRules = [];
+    let skippedExisting = 0;
+    let skippedUntitled = 0;
+    let skippedEmpty = 0;
+
+    for (const group of groups) {
+        const rawTitle = String(group && group.title || '').trim();
+        if (!rawTitle) {
+            skippedUntitled += 1;
+            continue;
+        }
+
+        const groupName = stripGroupIcon(rawTitle);
+        const normalizedName = normalizeGroupName(groupName);
+        if (!normalizedName) {
+            skippedUntitled += 1;
+            continue;
+        }
+
+        if (existingNames.has(normalizedName)) {
+            skippedExisting += 1;
+            continue;
+        }
+
+        const groupTabs = tabs
+            .filter(tab => tab.groupId === group.id)
+            .sort((a, b) => a.index - b.index);
+
+        const patterns = inferPatternsFromTabs(groupTabs);
+        if (patterns.length === 0) {
+            skippedEmpty += 1;
+            continue;
+        }
+
+        const newRule = {
+            id: `group-import-${Date.now()}-${createdRules.length}`,
+            name: groupName,
+            color: VALID_COLORS.has(group.color) ? group.color : 'blue',
+            patterns,
+            merge: true
+        };
+
+        const icon = normalizeGroupIcon(getGroupTitleIcon(rawTitle));
+        if (icon) {
+            newRule.icon = icon;
+        }
+
+        rules.push(newRule);
+        createdRules.push(newRule);
+        existingNames.add(normalizedName);
+    }
+
+    if (createdRules.length === 0) {
+        alert([
+            'No new rules were generated.',
+            skippedExisting ? `${skippedExisting} groups already had matching rules.` : '',
+            skippedUntitled ? `${skippedUntitled} groups were skipped because they have no title.` : '',
+            skippedEmpty ? `${skippedEmpty} groups were skipped because their tabs did not yield usable URL patterns.` : ''
+        ].filter(Boolean).join('\n'));
+        return;
+    }
+
+    await chrome.storage.sync.set({ rules });
+    renderRules();
+
+    alert([
+        `Created ${createdRules.length} new rule${createdRules.length === 1 ? '' : 's'}.`,
+        skippedExisting ? `${skippedExisting} groups were skipped because a rule already exists.` : '',
+        skippedUntitled ? `${skippedUntitled} untitled groups were skipped.` : '',
+        skippedEmpty ? `${skippedEmpty} groups had no usable URLs.` : ''
+    ].filter(Boolean).join('\n'));
+}
+
+function inferPatternsFromTabs(groupTabs) {
+    const patterns = [];
+    const seen = new Set();
+
+    groupTabs.forEach(tab => {
+        const pattern = inferPatternFromUrl(tab && tab.url);
+        if (!pattern || seen.has(pattern)) return;
+        seen.add(pattern);
+        patterns.push(pattern);
+    });
+
+    return patterns;
+}
+
+function inferPatternFromUrl(urlValue) {
+    try {
+        const url = new URL(String(urlValue || '').trim());
+        if (!['http:', 'https:'].includes(url.protocol)) return '';
+
+        const hostname = String(url.hostname || '').toLowerCase();
+        if (!hostname) return '';
+
+        if (url.port || hostname === 'localhost' || isIpAddress(hostname)) {
+            return `${url.origin}/*`;
+        }
+
+        if (hostname.startsWith('www.')) {
+            return hostname.slice(4);
+        }
+
+        return hostname;
+    } catch (error) {
+        return '';
+    }
+}
+
+function isIpAddress(hostname) {
+    return /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.includes(':');
 }
 
 async function importConfiguration(file) {
@@ -670,6 +809,10 @@ function applySettingsToUi(settings) {
     keepGroupOrderCheck.checked = settings.keepGroupOrder === true;
     groupsBeforeTabsCheck.checked = settings.groupsBeforeTabs === true;
     preserveSplitViewCheck.checked = settings.preserveSplitView !== false;
+}
+
+function formatPatternLines(patterns) {
+    return Array.isArray(patterns) ? patterns.join('\n') : '';
 }
 
 function renderIconOptions(query) {

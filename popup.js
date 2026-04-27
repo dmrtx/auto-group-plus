@@ -21,6 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let existingRules = [];
 let currentUrl = null;
+let matchedRuleId = null;
+let matchedPatternValue = null;
 const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const {
     GROUP_EMOJIS,
@@ -116,6 +118,8 @@ async function init() {
 
         if (matchedRule) {
             const matchedPattern = matchedRule.patterns.find(p => matchesPattern(currentUrl.href, p));
+            matchedRuleId = matchedRule.id;
+            matchedPatternValue = matchedPattern;
 
             if (elements.groupSelect) elements.groupSelect.value = matchedRule.id;
             if (elements.patternInput) elements.patternInput.value = matchedPattern;
@@ -503,6 +507,11 @@ async function handleFormSubmit(e, els) {
 
     const selectedValue = els.groupSelect.value;
     let ruleIdToUpdate = selectedValue;
+    const isReplacingMatchedPattern = Boolean(
+        matchedRuleId &&
+        matchedPatternValue &&
+        selectedValue === matchedRuleId
+    );
 
     // Logic: If "new" OR "browser_group", we create a new rule
     if (selectedValue === 'new' || selectedValue.startsWith('browser_group:')) {
@@ -531,7 +540,10 @@ async function handleFormSubmit(e, els) {
             } else {
                 delete existingRule.icon;
             }
-            if (!existingRule.patterns.includes(pattern)) {
+            if (isReplacingMatchedPattern && existingRule.id === matchedRuleId) {
+                existingRule.patterns = replacePattern(existingRule.patterns, matchedPatternValue, pattern);
+                matchedPatternValue = pattern;
+            } else if (!existingRule.patterns.includes(pattern)) {
                 existingRule.patterns.push(pattern);
             }
             const idx = existingRules.indexOf(existingRule);
@@ -577,8 +589,10 @@ async function handleFormSubmit(e, els) {
             } else {
                 delete rule.icon;
             }
-            // Avoid duplicates
-            if (!rule.patterns.includes(pattern)) {
+            if (isReplacingMatchedPattern) {
+                rule.patterns = replacePattern(rule.patterns, matchedPatternValue, pattern);
+                matchedPatternValue = pattern;
+            } else if (!rule.patterns.includes(pattern)) {
                 rule.patterns.push(pattern);
             }
             existingRules[ruleIndex] = rule;
@@ -641,6 +655,26 @@ function showRulesForCurrentGroup(els) {
 
 function normalizeGroupName(name) {
     return normalizeGroupTitle(name);
+}
+
+function replacePattern(patterns, previousPattern, nextPattern) {
+    const source = Array.isArray(patterns) ? patterns : [];
+    const normalizedNext = String(nextPattern || '').trim();
+    const normalizedPrevious = String(previousPattern || '').trim();
+    const replaced = source.map(pattern => pattern === normalizedPrevious ? normalizedNext : pattern);
+    const unique = [];
+
+    replaced.forEach(pattern => {
+        const value = String(pattern || '').trim();
+        if (!value || unique.includes(value)) return;
+        unique.push(value);
+    });
+
+    if (!unique.includes(normalizedNext) && normalizedNext) {
+        unique.push(normalizedNext);
+    }
+
+    return unique;
 }
 
 function setSelectedColor(els, color) {
