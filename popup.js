@@ -481,7 +481,7 @@ function handleGroupSelect(els) {
         if (els.newGroupNameInput) els.newGroupNameInput.value = stripGroupIcon(title);
         setSelectedColor(els, color);
         setSelectedIcon(els, getGroupTitleIcon(title));
-        setEmojiPickerOpen(els, Boolean(getGroupTitleIcon(title)));
+        setEmojiPickerOpen(els, false);
     } else {
         const selectedRule = existingRules.find(rule => rule.id === val);
         if (!selectedRule) {
@@ -494,7 +494,7 @@ function handleGroupSelect(els) {
         if (els.newGroupNameInput) els.newGroupNameInput.value = selectedRule.name || '';
         setSelectedColor(els, selectedRule.color || 'blue');
         setSelectedIcon(els, selectedRule.icon || '');
-        setEmojiPickerOpen(els, Boolean(selectedRule.icon));
+        setEmojiPickerOpen(els, false);
     }
 }
 
@@ -693,7 +693,7 @@ function setSelectedIcon(els, icon) {
         els.newGroupIconPreview.textContent = safeIcon ? `${safeIcon} Emoji selected` : 'No emoji';
     }
     if (els.newGroupIconToggleBtn) {
-        els.newGroupIconToggleBtn.textContent = safeIcon ? 'Change emoji' : 'Add emoji';
+        els.newGroupIconToggleBtn.textContent = 'Change emoji';
     }
     if (els.newGroupIconPanel && !els.newGroupIconPanel.hidden) {
         renderEmojiOptions(els, els.newGroupIconSearchInput ? els.newGroupIconSearchInput.value : '');

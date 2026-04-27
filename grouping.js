@@ -241,7 +241,7 @@
           group,
           startIndex: groupTabs[0].index,
           tabCount: groupTabs.length,
-          order: getGroupOrder(group, rules)
+          orderMeta: getGroupOrder(group, rules)
         };
       })
       .filter(Boolean);
@@ -249,8 +249,14 @@
     if (groupEntries.length === 0) return;
 
     const sortedGroups = groupEntries.slice().sort((a, b) => {
-      if (settings.keepGroupOrder === true && a.order !== b.order) {
-        return a.order - b.order;
+      if (settings.keepGroupOrder === true) {
+        if (a.orderMeta.hasExplicitOrder !== b.orderMeta.hasExplicitOrder) {
+          return a.orderMeta.hasExplicitOrder ? -1 : 1;
+        }
+
+        if (a.orderMeta.order !== b.orderMeta.order) {
+          return a.orderMeta.order - b.orderMeta.order;
+        }
       }
 
       return a.startIndex - b.startIndex;
@@ -277,10 +283,20 @@
   function getGroupOrder(group, rules) {
     const normalizedTitle = normalizeGroupName(group.title);
     const ruleIndex = rules.findIndex(rule => normalizeGroupName(rule.name) === normalizedTitle);
-    if (ruleIndex === -1) return Number.MAX_SAFE_INTEGER;
+    if (ruleIndex === -1) {
+      return {
+        hasExplicitOrder: false,
+        order: Number.MAX_SAFE_INTEGER
+      };
+    }
 
     const explicitOrder = rules[ruleIndex].groupOrder;
-    return Number.isInteger(explicitOrder) && explicitOrder >= 0 ? explicitOrder : ruleIndex;
+    return {
+      hasExplicitOrder: Number.isInteger(explicitOrder) && explicitOrder >= 0,
+      order: Number.isInteger(explicitOrder) && explicitOrder >= 0
+        ? explicitOrder
+        : Number.MAX_SAFE_INTEGER
+    };
   }
 
   function normalizeGroupName(name) {

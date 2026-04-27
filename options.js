@@ -200,16 +200,28 @@ function createRuleCard(rule, orderIndex) {
 
 function getOrderedRules() {
     return rules
-        .map((rule, index) => ({ rule, index, order: getEffectiveGroupOrder(rule, index) }))
+        .map((rule, index) => ({
+            rule,
+            index,
+            hasExplicitOrder: hasExplicitGroupOrder(rule),
+            order: getEffectiveGroupOrder(rule)
+        }))
         .sort((a, b) => {
+            if (a.hasExplicitOrder !== b.hasExplicitOrder) {
+                return a.hasExplicitOrder ? -1 : 1;
+            }
             if (a.order !== b.order) return a.order - b.order;
             return a.index - b.index;
         })
         .map(entry => entry.rule);
 }
 
-function getEffectiveGroupOrder(rule, fallbackIndex) {
-    return Number.isInteger(rule.groupOrder) && rule.groupOrder >= 0 ? rule.groupOrder : fallbackIndex;
+function getEffectiveGroupOrder(rule) {
+    return hasExplicitGroupOrder(rule) ? rule.groupOrder : Number.MAX_SAFE_INTEGER;
+}
+
+function hasExplicitGroupOrder(rule) {
+    return Number.isInteger(rule && rule.groupOrder) && rule.groupOrder >= 0;
 }
 
 function handleRulePointerDown(event) {
@@ -346,7 +358,7 @@ function selectIcon(icon) {
         selectedIconPreview.textContent = safeIcon ? `${safeIcon} Emoji selected` : 'No emoji';
     }
     if (toggleIconPickerBtn) {
-        toggleIconPickerBtn.textContent = safeIcon ? 'Change emoji' : 'Add emoji';
+        toggleIconPickerBtn.textContent = 'Change emoji';
     }
     if (iconPickerPanel && !iconPickerPanel.hidden) {
         renderIconOptions(iconSearchInput ? iconSearchInput.value : '');
