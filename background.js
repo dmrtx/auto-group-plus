@@ -15,74 +15,6 @@ let layoutApplyTimer = null;
 let openTabsRebuildTimer = null;
 let isRebuildingOpenTabs = false;
 
-// Generate dynamic action icons so they look good on any theme
-function createPlusIcon(size) {
-  if (typeof OffscreenCanvas === 'undefined') {
-    return null;
-  }
-
-  const canvas = new OffscreenCanvas(size, size);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-
-  // Transparent background
-  ctx.clearRect(0, 0, size, size);
-
-  // Blue rounded square background
-  const radius = Math.round(size * 0.22);
-  const margin = Math.round(size * 0.08);
-  const x = margin;
-  const y = margin;
-  const w = size - margin * 2;
-  const h = size - margin * 2;
-
-  ctx.fillStyle = '#1D8CF8';
-  ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-  ctx.lineTo(x + w, y + h - radius);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-  ctx.lineTo(x + radius, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
-  ctx.fill();
-
-  // White plus
-  const barThickness = Math.round(size * 0.18);
-  const center = size / 2;
-  ctx.fillStyle = '#FFFFFF';
-
-  // Vertical bar
-  ctx.fillRect(center - barThickness / 2, y + radius * 0.7, barThickness, h - radius * 1.4);
-
-  // Horizontal bar
-  ctx.fillRect(x + radius * 0.7, center - barThickness / 2, w - radius * 1.4, barThickness);
-
-  return ctx.getImageData(0, 0, size, size);
-}
-
-function setDynamicIcons() {
-  try {
-    const sizes = [16, 32, 48, 64, 128];
-    const imageData = {};
-    for (const size of sizes) {
-      const data = createPlusIcon(size);
-      if (data) {
-        imageData[size] = data;
-      }
-    }
-
-    if (Object.keys(imageData).length > 0) {
-      chrome.action.setIcon({ imageData }).catch?.(() => {});
-    }
-  } catch (error) {
-    console.warn('[AutoGroup+] Could not generate dynamic action icons.', error);
-  }
-}
-
 // Consolidated Message Listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   backgroundLogger?.debug('Received runtime message', {
@@ -209,7 +141,6 @@ async function rebuildOpenTabs(reason) {
 function initializeExtension(reason, rebuildTabs = false) {
   try {
     backgroundLogger?.info('Initializing extension', { reason, rebuildTabs });
-    setDynamicIcons();
     if (rebuildTabs) {
       scheduleOpenTabsRebuild(reason);
       return;

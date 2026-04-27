@@ -2,6 +2,9 @@ const rulesContainer = document.getElementById('rules-container');
 const addRuleBtn = document.getElementById('add-rule-btn');
 const viewOverviewBtn = document.getElementById('view-overview-btn');
 const rebuildGroupsBtn = document.getElementById('rebuild-groups-btn');
+const exportConfigBtn = document.getElementById('export-config-btn');
+const importConfigBtn = document.getElementById('import-config-btn');
+const importConfigFileInput = document.getElementById('import-config-file');
 const ruleModal = document.getElementById('rule-modal');
 const ruleForm = document.getElementById('rule-form');
 const cancelBtn = document.getElementById('cancel-btn');
@@ -29,6 +32,7 @@ const mergeCountdownCheck = document.getElementById('setting-merge-countdown');
 const keepGroupOrderCheck = document.getElementById('setting-keep-group-order');
 const groupsBeforeTabsCheck = document.getElementById('setting-groups-before-tabs');
 const preserveSplitViewCheck = document.getElementById('setting-preserve-split-view');
+const CONFIG_EXPORT_VERSION = 1;
 
 // Load rules & settings on startup
 async function loadData() {
@@ -38,13 +42,7 @@ async function loadData() {
     // Default settings
     const settings = data.settings || { excludeWebApps: true, mergeCountdown: true };
 
-    // Apply to UI
-    excludeWebAppsCheck.checked = settings.excludeWebApps !== false; // Default true
-    mergeCountdownCheck.checked = settings.mergeCountdown !== false; // Default true
-    keepGroupOrderCheck.checked = settings.keepGroupOrder === true;
-    groupsBeforeTabsCheck.checked = settings.groupsBeforeTabs === true;
-    preserveSplitViewCheck.checked = settings.preserveSplitView !== false; // Default true
-
+    applySettingsToUi(sanitizeSettings(settings));
     renderRules();
 }
 
@@ -436,6 +434,20 @@ if (rebuildGroupsBtn) {
         });
     };
 }
+if (exportConfigBtn) {
+    exportConfigBtn.onclick = () => exportConfiguration();
+}
+if (importConfigBtn && importConfigFileInput) {
+    importConfigBtn.onclick = () => {
+        importConfigFileInput.value = '';
+        importConfigFileInput.click();
+    };
+    importConfigFileInput.onchange = async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        await importConfiguration(file);
+    };
+}
 cancelBtn.onclick = () => closeModal();
 
 colorOptions.forEach(opt => {
@@ -530,6 +542,134 @@ async function applyGroupLayoutToOpenTabs() {
     await chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.APPLY_GROUP_LAYOUT }).catch((e) => {
         console.warn('Could not apply group layout after saving.', e);
     });
+}
+
+async function exportConfiguration() {
+    const { rules: storedRules = [], settings = {} } = await chrome.storage.sync.get(['rules', 'settings']);
+    const exportPayload = {
+        app: 'AutoGroup+',
+        version: CONFIG_EXPORT_VERSION,
+        exportedAt: new Date().toISOString(),
+        rules: sanitizeRules(storedRules),
+        settings: sanitizeSettings(settings)
+    };
+
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    const stamp = exportPayload.exportedAt.replace(/[:.]/g, '-');
+    anchor.href = url;
+    anchor.download = `autogroup-plus-${stamp}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function importConfiguration(file) {
+    try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const importedRules = sanitizeRules(parsed && parsed.rules);
+        const importedSettings = sanitizeSettings(parsed && parsed.settings);
+
+        if (!Array.isArray(parsed && parsed.rules)) {
+            throw new Error('Missing "rules" array.');
+        }
+
+        await chrome.storage.sync.set({
+            rules: importedRules,
+            settings: importedSettings
+        });
+
+        rules = importedRules;
+        applySettingsToUi(importedSettings);
+        renderRules();
+        await applyRulesToOpenTabs();
+        await applyGroupLayoutToOpenTabs();
+        alert(`Imported ${importedRules.length} rules.`);
+    } catch (error) {
+        console.error('Could not import configuration.', error);
+        alert(`Import failed.\n${error && error.message ? error.message : String(error)}`);
+    } finally {
+        if (importConfigFileInput) {
+            importConfigFileInput.value = '';
+        }
+    }
+}
+
+function sanitizeRules(value) {
+    if (!Array.isArray(value)) return [];
+
+    return value
+        .map((rule, index) => sanitizeRule(rule, index))
+        .filter(Boolean);
+}
+
+function sanitizeRule(rule, index) {
+    if (!rule || typeof rule !== 'object') return null;
+
+    const name = String(rule.name || '').trim();
+    const patterns = Array.isArray(rule.patterns)
+        ? rule.patterns.map(pattern => String(pattern || '').trim()).filter(Boolean)
+        : [];
+
+    if (!name || patterns.length === 0) return null;
+
+    const sanitized = {
+        id: String(rule.id || `imported-rule-${index}-${Date.now()}`),
+        name,
+        patterns,
+        color: VALID_COLORS.has(rule.color) ? rule.color : 'blue',
+        merge: rule.merge !== false
+    };
+
+    const icon = normalizeGroupIcon(rule.icon);
+    if (icon) {
+        sanitized.icon = icon;
+    }
+
+    if (Number.isInteger(rule.groupOrder) && rule.groupOrder >= 0) {
+        sanitized.groupOrder = rule.groupOrder;
+    }
+
+    if (Array.isArray(rule.fixedTabs)) {
+        const fixedTabs = rule.fixedTabs
+            .map(entry => sanitizeFixedTab(entry))
+            .filter(Boolean);
+        if (fixedTabs.length > 0) {
+            sanitized.fixedTabs = fixedTabs;
+        }
+    }
+
+    return sanitized;
+}
+
+function sanitizeFixedTab(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    const index = Number.parseInt(entry.index, 10);
+    const url = String(entry.url || '').trim();
+    if (!Number.isInteger(index) || index < 0 || !url) return null;
+    return { index, url };
+}
+
+function sanitizeSettings(settings) {
+    const safe = settings && typeof settings === 'object' ? settings : {};
+    return {
+        excludeWebApps: safe.excludeWebApps !== false,
+        mergeCountdown: safe.mergeCountdown !== false,
+        keepGroupOrder: safe.keepGroupOrder === true,
+        groupsBeforeTabs: safe.groupsBeforeTabs === true,
+        preserveSplitView: safe.preserveSplitView !== false
+    };
+}
+
+function applySettingsToUi(settings) {
+    excludeWebAppsCheck.checked = settings.excludeWebApps !== false;
+    mergeCountdownCheck.checked = settings.mergeCountdown !== false;
+    keepGroupOrderCheck.checked = settings.keepGroupOrder === true;
+    groupsBeforeTabsCheck.checked = settings.groupsBeforeTabs === true;
+    preserveSplitViewCheck.checked = settings.preserveSplitView !== false;
 }
 
 function renderIconOptions(query) {
