@@ -38,14 +38,19 @@
       if (!urlStr || !pattern) return false;
 
       const url = new URL(urlStr);
-      const normalizedUrl = urlStr.toLowerCase();
+      const normalizedUrl = normalizeComparableUrl(urlStr);
       const hostname = url.hostname.toLowerCase();
       const cleanPattern = String(pattern).toLowerCase().trim();
 
       if (!cleanPattern) return false;
 
+      const patternLooksLikeUrl = looksLikeUrlPattern(cleanPattern);
+      const hasWildcard = cleanPattern.includes('*');
+
       // Exact URL match.
-      if (normalizedUrl === cleanPattern) return true;
+      if (patternLooksLikeUrl && !hasWildcard) {
+        return normalizedUrl === normalizeComparableUrl(cleanPattern);
+      }
 
       // Domain and subdomains: *.example.com.
       if (cleanPattern.startsWith('*.')) {
@@ -63,7 +68,9 @@
         .replace(/\*/g, '.*');
       const regex = new RegExp(`^${regexPattern}$`, 'i');
 
-      return regex.test(normalizedUrl) || regex.test(hostname);
+      return patternLooksLikeUrl
+        ? regex.test(normalizedUrl)
+        : (regex.test(normalizedUrl) || regex.test(hostname));
     } catch (e) {
       return false;
     }
@@ -81,10 +88,23 @@
   function findMatchingRule(rules, url) {
     if (!Array.isArray(rules)) return null;
 
-    return rules.find(rule => {
-      if (!isValidRule(rule)) return false;
-      return rule.patterns.some(pattern => matchesPattern(url, pattern));
-    }) || null;
+    let bestMatch = null;
+
+    rules.forEach((rule, ruleIndex) => {
+      if (!isValidRule(rule)) return;
+
+      const matchedPatterns = rule.patterns.filter(pattern => matchesPattern(url, pattern));
+      if (matchedPatterns.length === 0) return;
+
+      const bestPatternScore = Math.max(...matchedPatterns.map(getPatternSpecificityScore));
+      const candidate = { rule, ruleIndex, score: bestPatternScore };
+
+      if (!bestMatch || candidate.score > bestMatch.score || (candidate.score === bestMatch.score && candidate.ruleIndex < bestMatch.ruleIndex)) {
+        bestMatch = candidate;
+      }
+    });
+
+    return bestMatch ? bestMatch.rule : null;
   }
 
   function normalizeExactUrl(urlStr) {
@@ -128,7 +148,7 @@
     const normalizedUrl = normalizeExactUrl(url);
     if (!normalizedUrl || !Array.isArray(rule && rule.fixedTabs)) return null;
 
-    const match = rule.fixedTabs.find(entry => {
+    const matches = rule.fixedTabs.filter(entry => {
       const fixedUrl = normalizeExactUrl(entry.url);
       const isWildcard = String(entry.url || '').includes('*');
 
@@ -138,7 +158,40 @@
         (isWildcard ? matchesPattern(normalizedUrl, fixedUrl) : fixedUrl === normalizedUrl);
     });
 
-    return match ? match.index : null;
+    if (matches.length === 0) return null;
+
+    matches.sort((a, b) => {
+      const scoreDifference = getPatternSpecificityScore(b.url) - getPatternSpecificityScore(a.url);
+      if (scoreDifference !== 0) return scoreDifference;
+      return a.index - b.index;
+    });
+
+    return matches[0].index;
+  }
+
+  function looksLikeUrlPattern(value) {
+    return /^[a-z][a-z0-9+.-]*:\/\//i.test(String(value || '').trim());
+  }
+
+  function normalizeComparableUrl(urlStr) {
+    try {
+      return new URL(String(urlStr || '').trim()).href.toLowerCase();
+    } catch (e) {
+      return String(urlStr || '').trim().toLowerCase();
+    }
+  }
+
+  function getPatternSpecificityScore(pattern) {
+    const value = String(pattern || '').trim().toLowerCase();
+    if (!value) return 0;
+
+    const wildcardPenalty = value.includes('*') ? 1000 : 0;
+    const urlBonus = looksLikeUrlPattern(value) ? 4000 : 0;
+    const subdomainBonus = value.startsWith('*.') ? 1500 : 0;
+    const hostBonus = !urlBonus && !subdomainBonus ? 1000 : 0;
+    const literalLength = value.replace(/\*/g, '').length;
+
+    return urlBonus + subdomainBonus + hostBonus + literalLength - wildcardPenalty;
   }
 
   function normalizeGroupIcon(icon) {

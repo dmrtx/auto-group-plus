@@ -5,16 +5,25 @@
   const { findFixedTabPosition, findMatchingRule, formatGroupTitle, normalizeGroupTitle } = rulesApi;
   const pendingMerges = {};
 
-  async function groupTab(tab) {
+  async function groupTab(tab, options = {}) {
     try {
       if (!tab.url) return;
+      const revealTab = options.revealTab !== false;
+      const allowDiscarded = options.allowDiscarded === true;
+
+      if (tab.discarded && !allowDiscarded) {
+        console.log(`[AutoGroup+] Skipping discarded tab ${tab.id}`);
+        return;
+      }
 
       chrome.action.setBadgeText({ text: '' });
 
       const { rules = [], settings = {} } = await chrome.storage.sync.get(['rules', 'settings']);
 
       const excludeWebApps = settings.excludeWebApps !== false;
-      const enableCountdown = settings.mergeCountdown !== false;
+      const enableCountdown = options.enableCountdown !== undefined
+        ? options.enableCountdown
+        : settings.mergeCountdown !== false;
       const preserveSplitView = settings.preserveSplitView !== false;
 
       if (excludeWebApps) {
@@ -45,7 +54,7 @@
       });
 
       if (!existingGroup) {
-        await createGroupForTab(tab, rule);
+        await createGroupForTab(tab, rule, { revealTab });
         await applyFixedPosition(tab.id, rule, tab.url);
         await applyGroupLayout(rules, settings, tab.windowId);
         return;
@@ -58,7 +67,7 @@
         chrome.tabGroups.update(existingGroup.id, { color: rule.color, title: desiredTitle });
       }
 
-      await placeTabInGroup(tab, existingGroup, rule, enableCountdown);
+      await placeTabInGroup(tab, existingGroup, rule, enableCountdown, { revealTab });
       await applyGroupLayout(rules, settings, tab.windowId);
     } catch (err) {
       const msg = err && err.message ? err.message : String(err || '');
@@ -70,31 +79,48 @@
     }
   }
 
-  async function placeTabInGroup(tab, existingGroup, rule, enableCountdown) {
+  async function placeTabInGroup(tab, existingGroup, rule, enableCountdown, options = {}) {
+    const revealTab = options.revealTab !== false;
+
     if (rule.merge) {
       if (tab.windowId !== existingGroup.windowId) {
-        await mergeAcrossWindows(tab, existingGroup, rule, enableCountdown);
+        await mergeAcrossWindows(tab, existingGroup, rule, enableCountdown, { revealTab });
         return;
       }
 
       await chrome.tabs.group({ tabIds: tab.id, groupId: existingGroup.id });
       await applyFixedPosition(tab.id, rule, tab.url);
+      if (revealTab) {
+        await revealGroupedTab(tab.id, tab.windowId);
+      }
       return;
     }
 
     if (tab.windowId === existingGroup.windowId) {
       await chrome.tabs.group({ tabIds: tab.id, groupId: existingGroup.id });
       await applyFixedPosition(tab.id, rule, tab.url);
+      if (revealTab) {
+        await revealGroupedTab(tab.id, tab.windowId);
+      }
       return;
     }
 
-    await createGroupForTab(tab, rule);
+    await createGroupForTab(tab, rule, { revealTab });
     await applyFixedPosition(tab.id, rule, tab.url);
   }
 
-  async function mergeAcrossWindows(tab, existingGroup, rule, enableCountdown) {
+  async function mergeAcrossWindows(tab, existingGroup, rule, enableCountdown, options = {}) {
+    const revealTab = options.revealTab !== false;
+
     if (!enableCountdown) {
-      await performMove(tab.id, existingGroup.id, existingGroup.windowId, findFixedTabPosition(rule, tab.url));
+      await performMove(
+        tab.id,
+        existingGroup.id,
+        existingGroup.windowId,
+        findFixedTabPosition(rule, tab.url),
+        1,
+        { revealTab }
+      );
       return;
     }
 
@@ -113,13 +139,27 @@
     }
 
     if (!messageSent) {
-      await performMove(tab.id, existingGroup.id, existingGroup.windowId, findFixedTabPosition(rule, tab.url));
+      await performMove(
+        tab.id,
+        existingGroup.id,
+        existingGroup.windowId,
+        findFixedTabPosition(rule, tab.url),
+        1,
+        { revealTab }
+      );
       return;
     }
 
     const timeoutId = setTimeout(async () => {
       console.log(`[AutoGroup+] Timeout reached. Moving tab ${tab.id}.`);
-      await performMove(tab.id, existingGroup.id, existingGroup.windowId, findFixedTabPosition(rule, tab.url));
+      await performMove(
+        tab.id,
+        existingGroup.id,
+        existingGroup.windowId,
+        findFixedTabPosition(rule, tab.url),
+        1,
+        { revealTab }
+      );
       delete pendingMerges[tab.id];
     }, 5000);
 
@@ -131,12 +171,16 @@
     };
   }
 
-  async function createGroupForTab(tab, rule) {
+  async function createGroupForTab(tab, rule, options = {}) {
+    const revealTab = options.revealTab !== false;
     const groupId = await chrome.tabs.group({
       tabIds: tab.id,
       createProperties: { windowId: tab.windowId }
     });
     await chrome.tabGroups.update(groupId, { title: formatGroupTitle(rule), color: rule.color });
+    if (revealTab) {
+      await revealGroupedTab(tab.id, tab.windowId);
+    }
   }
 
   async function applyFixedPosition(tabId, rule, tabUrl) {
@@ -153,8 +197,9 @@
     }
   }
 
-  async function performMove(tabId, groupId, windowId, targetIndex = null, attempt = 1) {
+  async function performMove(tabId, groupId, windowId, targetIndex = null, attempt = 1, options = {}) {
     try {
+      const revealTab = options.revealTab !== false;
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab) return;
       const { settings = {} } = await chrome.storage.sync.get('settings');
@@ -167,13 +212,14 @@
         await moveTabWithinGroup(tabId, targetIndex);
       }
 
-      chrome.windows.update(windowId, { focused: true }).catch(() => {});
-      chrome.tabs.update(tabId, { active: true }).catch(() => {});
+      if (revealTab) {
+        await revealGroupedTab(tabId, windowId);
+      }
     } catch (e) {
       const msg = e.message || '';
       if (msg.includes('Tabs cannot be edited right now') && attempt <= 3) {
         console.warn(`[AutoGroup+] Tab dragging detected. Retrying move (Attempt ${attempt}/3)...`);
-        setTimeout(() => performMove(tabId, groupId, windowId, targetIndex, attempt + 1), 500 * attempt);
+        setTimeout(() => performMove(tabId, groupId, windowId, targetIndex, attempt + 1, options), 500 * attempt);
         return;
       }
 
@@ -199,6 +245,11 @@
     const groupStartIndex = groupTabs[0].index;
     const clampedIndex = Math.min(targetIndex, groupTabs.length - 1);
     await chrome.tabs.move(tabId, { index: groupStartIndex + clampedIndex });
+  }
+
+  async function revealGroupedTab(tabId, windowId) {
+    chrome.windows.update(windowId, { focused: true }).catch(() => {});
+    chrome.tabs.update(tabId, { active: true }).catch(() => {});
   }
 
   async function applyGroupLayout(rulesArg = null, settingsArg = null, windowId = null) {

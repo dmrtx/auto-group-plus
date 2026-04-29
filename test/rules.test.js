@@ -34,7 +34,7 @@ test('matches simple glob URL patterns', () => {
   assert.equal(matchesPattern('https://example.com/settings', 'https://example.com/projects/*'), false);
 });
 
-test('finds the first valid matching rule', () => {
+test('prefers the most specific matching rule', () => {
   const rules = [
     { id: 'invalid', name: '', patterns: ['example.com'] },
     { id: 'work', name: 'Work', patterns: ['*.example.com'], color: 'blue' },
@@ -42,7 +42,23 @@ test('finds the first valid matching rule', () => {
   ];
 
   assert.equal(isValidRule(rules[0]), false);
-  assert.equal(findMatchingRule(rules, 'https://app.example.com')?.id, 'work');
+  assert.equal(findMatchingRule(rules, 'https://app.example.com')?.id, 'later');
+});
+
+test('does not treat full URLs as implicit prefix matches', () => {
+  assert.equal(matchesPattern('https://example.com/projects/123', 'https://example.com/projects'), false);
+  assert.equal(matchesPattern('https://example.com/projects/123', 'https://example.com/projects/*'), true);
+});
+
+test('prefers exact fixed tab URLs over broader wildcard matches', () => {
+  const rule = {
+    fixedTabs: [
+      { index: 0, url: 'https://example.com/projects/*' },
+      { index: 1, url: 'https://example.com/projects/123' }
+    ]
+  };
+
+  assert.equal(findFixedTabPosition(rule, 'https://example.com/projects/123'), 1);
 });
 
 test('parses fixed tab position lines', () => {

@@ -12,7 +12,6 @@ const diagnosticsApi = globalThis.AutoGroupDiagnostics;
 const backgroundLogger = diagnosticsApi ? diagnosticsApi.createLogger('background') : null;
 
 let layoutApplyTimer = null;
-let openTabsRebuildTimer = null;
 let isRebuildingOpenTabs = false;
 
 // Consolidated Message Listener
@@ -99,16 +98,6 @@ function scheduleSavedLayout(reason) {
   }, 150);
 }
 
-function scheduleOpenTabsRebuild(reason) {
-  clearTimeout(openTabsRebuildTimer);
-  openTabsRebuildTimer = setTimeout(() => {
-    openTabsRebuildTimer = null;
-    rebuildOpenTabs(reason).catch((e) => {
-      console.warn(`[AutoGroup+] Could not rebuild open tabs on ${reason}.`, e);
-    });
-  }, 500);
-}
-
 async function applySavedLayout(reason) {
   try {
     await applyGroupLayout();
@@ -128,7 +117,11 @@ async function rebuildOpenTabs(reason) {
     ]);
 
     for (const tab of allTabs) {
-      await groupTab(tab);
+      await groupTab(tab, {
+        allowDiscarded: true,
+        enableCountdown: false,
+        revealTab: false
+      });
     }
 
     await applyGroupLayout(rules, settings);
@@ -138,14 +131,9 @@ async function rebuildOpenTabs(reason) {
   }
 }
 
-function initializeExtension(reason, rebuildTabs = false) {
+function initializeExtension(reason) {
   try {
-    backgroundLogger?.info('Initializing extension', { reason, rebuildTabs });
-    if (rebuildTabs) {
-      scheduleOpenTabsRebuild(reason);
-      return;
-    }
-
+    backgroundLogger?.info('Initializing extension', { reason });
     scheduleSavedLayout(reason);
   } catch (error) {
     backgroundLogger?.error('Initialization failed', { reason, error });
@@ -155,11 +143,11 @@ function initializeExtension(reason, rebuildTabs = false) {
 
 // Initialize dynamic icons on startup / install
 chrome.runtime.onStartup.addListener(() => {
-  initializeExtension('startup', true);
+  initializeExtension('startup');
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-  initializeExtension('install/update', true);
+chrome.runtime.onInstalled.addListener((details) => {
+  initializeExtension(details?.reason || 'install/update');
 });
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
