@@ -52,11 +52,17 @@
       const existingGroup = allGroups.find(group => {
         return normalizeGroupTitle(group.title) === normalizeGroupTitle(rule.name);
       });
+      const targetWindowId = existingGroup && rule.merge && tab.windowId !== existingGroup.windowId
+        ? existingGroup.windowId
+        : tab.windowId;
 
       if (!existingGroup) {
         await createGroupForTab(tab, rule, { revealTab });
         await applyFixedPosition(tab.id, rule, tab.url);
-        await applyGroupLayout(rules, settings, tab.windowId);
+        await applyGroupLayout(rules, settings, targetWindowId);
+        if (revealTab) {
+          await revealGroupedTab(tab.id, targetWindowId);
+        }
         return;
       }
 
@@ -68,7 +74,10 @@
       }
 
       await placeTabInGroup(tab, existingGroup, rule, enableCountdown, { revealTab });
-      await applyGroupLayout(rules, settings, tab.windowId);
+      await applyGroupLayout(rules, settings, targetWindowId);
+      if (revealTab) {
+        await revealGroupedTab(tab.id, targetWindowId);
+      }
     } catch (err) {
       const msg = err && err.message ? err.message : String(err || '');
       if (msg.includes('No tab with id')) return;
@@ -247,9 +256,30 @@
     await chrome.tabs.move(tabId, { index: groupStartIndex + clampedIndex });
   }
 
-  async function revealGroupedTab(tabId, windowId) {
-    chrome.windows.update(windowId, { focused: true }).catch(() => {});
-    chrome.tabs.update(tabId, { active: true }).catch(() => {});
+  async function revealGroupedTab(tabId, fallbackWindowId, attempt = 1) {
+    try {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (!tab) return;
+
+      const targetWindowId = Number.isInteger(tab.windowId) ? tab.windowId : fallbackWindowId;
+      await chrome.windows.update(targetWindowId, { focused: true });
+      const updatedTab = await chrome.tabs.update(tabId, { active: true });
+
+      if (updatedTab && updatedTab.active) return;
+
+      if (attempt < 3) {
+        await wait(80 * attempt);
+        await revealGroupedTab(tabId, targetWindowId, attempt + 1);
+      }
+    } catch (e) {
+      if (attempt < 3) {
+        await wait(80 * attempt);
+        await revealGroupedTab(tabId, fallbackWindowId, attempt + 1);
+        return;
+      }
+
+      console.warn(`[AutoGroup+] Could not reveal grouped tab ${tabId}.`, e);
+    }
   }
 
   async function applyGroupLayout(rulesArg = null, settingsArg = null, windowId = null) {
@@ -389,6 +419,10 @@
 
     clearTimeout(pending.timeoutId);
     delete pendingMerges[tabId];
+  }
+
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   return {
