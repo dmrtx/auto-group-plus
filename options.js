@@ -104,7 +104,7 @@ function renderRules() {
 
 function createEmptyState() {
     const emptyState = document.createElement('div');
-    emptyState.style.cssText = 'text-align: center; padding: 3rem; color: var(--text-dim);';
+    emptyState.className = 'empty-state';
 
     const message = document.createElement('p');
     message.textContent = 'No rules defined yet. Click "Add Group Rule" to get started!';
@@ -167,9 +167,10 @@ function createRuleCard(rule, orderIndex) {
     });
 
     const meta = document.createElement('div');
-    meta.style.cssText = 'font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;';
+    meta.className = 'rule-meta';
     meta.textContent = [
         rule.merge ? '✓ Merge' : '',
+        rule.protectFromSleep === true ? '✓ No sleep' : '',
         Number.isInteger(rule.groupOrder) ? `✓ Order ${rule.groupOrder}` : '',
         fixedTabs.length ? `✓ ${fixedTabs.length} fixed` : ''
     ]
@@ -187,9 +188,8 @@ function createRuleCard(rule, orderIndex) {
     editBtn.textContent = 'Edit';
 
     const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn btn-secondary delete-btn';
+    deleteBtn.className = 'btn btn-secondary btn-danger delete-btn';
     deleteBtn.dataset.id = rule.id;
-    deleteBtn.style.color = '#ef4444';
     deleteBtn.textContent = 'Delete';
 
     actions.append(editBtn, deleteBtn);
@@ -384,6 +384,7 @@ function editRule(id) {
     document.getElementById('rule-group-order').value = Number.isInteger(rule.groupOrder) ? String(rule.groupOrder) : '';
     document.getElementById('rule-fixed-tabs').value = formatFixedTabLines(rule.fixedTabs);
     document.getElementById('rule-merge').checked = rule.merge;
+    document.getElementById('rule-protect-from-sleep').checked = rule.protectFromSleep === true;
     if (iconSearchInput) iconSearchInput.value = '';
     selectColor(rule.color);
     selectIcon(rule.icon);
@@ -425,7 +426,8 @@ if (viewOverviewBtn) {
                 const fixed = Array.isArray(r.fixedTabs) && r.fixedTabs.length > 0
                     ? `  |  fixed: ${r.fixedTabs.map(entry => `#${entry.index} ${entry.url}`).join(', ')}`
                     : '';
-                return `• ${formatGroupTitle(r) || '(no title)'} [${r.color}]  |  patterns: ${patterns}${order}${fixed}`;
+                const sleep = r.protectFromSleep === true ? '  |  no-sleep' : '';
+                return `• ${formatGroupTitle(r) || '(no title)'} [${r.color}]  |  patterns: ${patterns}${order}${fixed}${sleep}`;
             }).join('\n') || 'No rules defined.';
 
             const groupsList = (resp.groups || []).map(g => {
@@ -519,8 +521,9 @@ ruleForm.onsubmit = async (e) => {
     const color = selectedColorInput.value;
     const icon = normalizeGroupIcon(selectedIconInput.value);
     const merge = document.getElementById('rule-merge').checked;
+    const protectFromSleep = document.getElementById('rule-protect-from-sleep').checked;
 
-    const newRule = { id, name, patterns, color, merge, fixedTabs };
+    const newRule = { id, name, patterns, color, merge, fixedTabs, protectFromSleep };
     if (icon) {
         newRule.icon = icon;
     }
@@ -643,7 +646,8 @@ async function generateRulesFromOpenGroups() {
             name: groupName,
             color: VALID_COLORS.has(group.color) ? group.color : 'blue',
             patterns,
-            merge: true
+            merge: true,
+            protectFromSleep: false
         };
 
         const icon = normalizeGroupIcon(getGroupTitleIcon(rawTitle));
@@ -772,7 +776,8 @@ function sanitizeRule(rule, index) {
         name,
         patterns,
         color: VALID_COLORS.has(rule.color) ? rule.color : 'blue',
-        merge: rule.merge !== false
+        merge: rule.merge !== false,
+        protectFromSleep: rule.protectFromSleep === true
     };
 
     const icon = normalizeGroupIcon(rule.icon);

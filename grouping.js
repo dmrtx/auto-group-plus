@@ -61,6 +61,7 @@
       if (!existingGroup) {
         await createGroupForTab(tab, rule, { revealTab });
         await applyFixedPosition(tab.id, rule, tab.url);
+        await applySleepProtectionToTab(tab.id, rule);
         await applyGroupLayout(rules, settings, targetWindowId);
         if (revealTab) {
           await revealGroupedTab(tab.id, targetWindowId);
@@ -76,6 +77,7 @@
       }
 
       await placeTabInGroup(tab, existingGroup, rule, enableCountdown, { revealTab });
+      await applySleepProtectionToTab(tab.id, rule);
       await applyGroupLayout(rules, settings, targetWindowId);
       if (revealTab) {
         await revealGroupedTab(tab.id, targetWindowId);
@@ -194,6 +196,56 @@
     await chrome.tabGroups.update(groupId, { title: formatGroupTitle(rule), color: rule.color });
     if (revealTab) {
       await revealGroupedTab(tab.id, tab.windowId);
+    }
+  }
+
+  async function applySleepProtectionToTab(tabId, rule) {
+    if (!Number.isInteger(tabId) || !rule) return;
+
+    const shouldProtect = rule.protectFromSleep === true;
+
+    try {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (!tab) return;
+      if (tab.autoDiscardable === !shouldProtect) return;
+
+      markExtensionTabAction(tabId, shouldProtect ? 'protect-from-sleep' : 'allow-sleep');
+      await chrome.tabs.update(tabId, { autoDiscardable: !shouldProtect });
+    } catch (e) {
+      console.warn(`[AutoGroup+] Could not update sleep protection for tab ${tabId}.`, e);
+    }
+  }
+
+  async function enforceSleepProtectionForTab(tabId, groupId = null) {
+    if (!Number.isInteger(tabId)) return;
+
+    try {
+      const [tab, { rules = [] }] = await Promise.all([
+        chrome.tabs.get(tabId).catch(() => null),
+        chrome.storage.sync.get(['rules'])
+      ]);
+
+      if (!tab) return;
+
+      const effectiveGroupId = Number.isInteger(groupId) ? groupId : tab.groupId;
+      if (!Number.isInteger(effectiveGroupId) || effectiveGroupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+        if (tab.autoDiscardable === false) {
+          markExtensionTabAction(tabId, 'allow-sleep');
+          await chrome.tabs.update(tabId, { autoDiscardable: true }).catch(() => {});
+        }
+        return;
+      }
+
+      const group = await chrome.tabGroups.get(effectiveGroupId).catch(() => null);
+      if (!group) return;
+
+      const matchingRule = Array.isArray(rules)
+        ? rules.find(rule => normalizeGroupTitle(group.title) === normalizeGroupTitle(rule.name))
+        : null;
+
+      await applySleepProtectionToTab(tabId, matchingRule || { protectFromSleep: false });
+    } catch (e) {
+      console.warn(`[AutoGroup+] Could not enforce sleep protection for tab ${tabId}.`, e);
     }
   }
 
@@ -466,6 +518,7 @@
 
   return {
     applyGroupLayout,
+    enforceSleepProtectionForTab,
     cancelPendingMerge,
     clearExtensionTabAction,
     clearPendingMerge,

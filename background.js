@@ -7,6 +7,7 @@ const {
   clearExtensionTabAction,
   clearPendingMerge,
   confirmPendingMerge,
+  enforceSleepProtectionForTab,
   groupTab,
   hasRecentExtensionTabAction
 } = AutoGroupGrouping;
@@ -126,6 +127,7 @@ async function rebuildOpenTabs(reason) {
         enableCountdown: false,
         revealTab: false
       });
+      await enforceSleepProtectionForTab(tab.id, tab.groupId);
     }
 
     await applyGroupLayout(rules, settings);
@@ -207,6 +209,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (Object.prototype.hasOwnProperty.call(changeInfo, 'groupId')) {
     recordTabAction(tabId, 'groupingOrigin', { groupId: changeInfo.groupId });
+    enforceSleepProtectionForTab(tabId, changeInfo.groupId).catch((e) => {
+      console.warn(`[AutoGroup+] Could not update sleep protection after group change for tab ${tabId}.`, e);
+    });
   }
 
   if (Object.prototype.hasOwnProperty.call(changeInfo, 'splitViewId')) {
