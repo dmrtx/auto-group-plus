@@ -4,6 +4,8 @@
   const { MESSAGE_ACTIONS } = constants;
   const { findFixedTabPosition, findMatchingRule, formatGroupTitle, normalizeGroupTitle } = rulesApi;
   const pendingMerges = {};
+  const extensionTabActions = new Map();
+  const EXTENSION_ACTION_TTL_MS = 4000;
 
   async function groupTab(tab, options = {}) {
     try {
@@ -97,6 +99,7 @@
         return;
       }
 
+      markExtensionTabAction(tab.id, 'group-existing');
       await chrome.tabs.group({ tabIds: tab.id, groupId: existingGroup.id });
       await applyFixedPosition(tab.id, rule, tab.url);
       if (revealTab) {
@@ -106,6 +109,7 @@
     }
 
     if (tab.windowId === existingGroup.windowId) {
+      markExtensionTabAction(tab.id, 'group-existing');
       await chrome.tabs.group({ tabIds: tab.id, groupId: existingGroup.id });
       await applyFixedPosition(tab.id, rule, tab.url);
       if (revealTab) {
@@ -182,6 +186,7 @@
 
   async function createGroupForTab(tab, rule, options = {}) {
     const revealTab = options.revealTab !== false;
+    markExtensionTabAction(tab.id, 'group-create');
     const groupId = await chrome.tabs.group({
       tabIds: tab.id,
       createProperties: { windowId: tab.windowId }
@@ -214,7 +219,9 @@
       const { settings = {} } = await chrome.storage.sync.get('settings');
       if (settings.preserveSplitView !== false && isSplitViewTab(tab)) return;
 
+      markExtensionTabAction(tabId, 'move-cross-window');
       await chrome.tabs.move(tabId, { windowId, index: -1 });
+      markExtensionTabAction(tabId, 'group-cross-window');
       await chrome.tabs.group({ tabIds: tabId, groupId });
 
       if (targetIndex !== null) {
@@ -253,6 +260,7 @@
 
     const groupStartIndex = groupTabs[0].index;
     const clampedIndex = Math.min(targetIndex, groupTabs.length - 1);
+    markExtensionTabAction(tabId, 'move-within-group');
     await chrome.tabs.move(tabId, { index: groupStartIndex + clampedIndex });
   }
 
@@ -322,6 +330,7 @@
           group,
           startIndex: groupTabs[0].index,
           tabCount: groupTabs.length,
+          tabIds: groupTabs.map(tab => tab.id).filter(Number.isInteger),
           orderMeta: getGroupOrder(group, rules)
         };
       })
@@ -356,9 +365,39 @@
   }
 
   async function moveGroupTabs(entry, index) {
+    markExtensionTabAction(entry.tabIds, 'move-group-layout');
     await chrome.tabGroups.move(entry.group.id, { index }).catch((e) => {
       console.warn(`[AutoGroup+] Could not move group "${entry.group.title}" to index ${index}.`, e);
     });
+  }
+
+  function markExtensionTabAction(tabIds, reason = 'extension-action') {
+    const ids = Array.isArray(tabIds) ? tabIds : [tabIds];
+    const expiresAt = Date.now() + EXTENSION_ACTION_TTL_MS;
+
+    for (const tabId of ids) {
+      if (!Number.isInteger(tabId)) continue;
+      extensionTabActions.set(tabId, { reason, expiresAt });
+    }
+  }
+
+  function hasRecentExtensionTabAction(tabId) {
+    cleanupExpiredExtensionTabActions();
+    const action = extensionTabActions.get(tabId);
+    return Boolean(action && action.expiresAt > Date.now());
+  }
+
+  function clearExtensionTabAction(tabId) {
+    extensionTabActions.delete(tabId);
+  }
+
+  function cleanupExpiredExtensionTabActions() {
+    const now = Date.now();
+    for (const [tabId, action] of extensionTabActions.entries()) {
+      if (!action || action.expiresAt <= now) {
+        extensionTabActions.delete(tabId);
+      }
+    }
   }
 
   function getGroupOrder(group, rules) {
@@ -428,8 +467,10 @@
   return {
     applyGroupLayout,
     cancelPendingMerge,
+    clearExtensionTabAction,
     clearPendingMerge,
     confirmPendingMerge,
-    groupTab
+    groupTab,
+    hasRecentExtensionTabAction
   };
 });

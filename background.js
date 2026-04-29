@@ -4,15 +4,19 @@ const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const {
   applyGroupLayout,
   cancelPendingMerge,
+  clearExtensionTabAction,
   clearPendingMerge,
   confirmPendingMerge,
-  groupTab
+  groupTab,
+  hasRecentExtensionTabAction
 } = AutoGroupGrouping;
 const diagnosticsApi = globalThis.AutoGroupDiagnostics;
 const backgroundLogger = diagnosticsApi ? diagnosticsApi.createLogger('background') : null;
 
 let layoutApplyTimer = null;
 let isRebuildingOpenTabs = false;
+let badgeClearTimer = null;
+const tabOriginState = new Map();
 
 // Consolidated Message Listener
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -141,6 +145,47 @@ function initializeExtension(reason) {
   }
 }
 
+function classifyTabAction(tabId) {
+  return hasRecentExtensionTabAction(tabId) ? 'auto' : 'man';
+}
+
+function rememberTabOrigin(tabId, kind, origin, extra = {}) {
+  if (!Number.isInteger(tabId)) return;
+  const previous = tabOriginState.get(tabId) || {};
+  tabOriginState.set(tabId, {
+    ...previous,
+    [kind]: origin,
+    updatedAt: Date.now(),
+    ...extra
+  });
+}
+
+function showOriginBadge(origin) {
+  const isAuto = origin === 'auto';
+  const text = isAuto ? 'AUTO' : 'MAN';
+  const color = isAuto ? '#2563eb' : '#f59e0b';
+
+  clearTimeout(badgeClearTimer);
+  chrome.action.setBadgeBackgroundColor({ color }).catch(() => {});
+  chrome.action.setBadgeText({ text }).catch(() => {});
+  badgeClearTimer = setTimeout(() => {
+    chrome.action.setBadgeText({ text: '' }).catch(() => {});
+    badgeClearTimer = null;
+  }, 2500);
+}
+
+function recordTabAction(tabId, kind, extra = {}) {
+  if (!Number.isInteger(tabId)) return;
+
+  const origin = classifyTabAction(tabId);
+  rememberTabOrigin(tabId, kind, origin, extra);
+  showOriginBadge(origin);
+
+  if (origin === 'auto') {
+    setTimeout(() => clearExtensionTabAction(tabId), 500);
+  }
+}
+
 // Initialize dynamic icons on startup / install
 chrome.runtime.onStartup.addListener(() => {
   initializeExtension('startup');
@@ -160,6 +205,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 
 // Listen for tab updates
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (Object.prototype.hasOwnProperty.call(changeInfo, 'groupId')) {
+    recordTabAction(tabId, 'groupingOrigin', { groupId: changeInfo.groupId });
+  }
+
   if (Object.prototype.hasOwnProperty.call(changeInfo, 'splitViewId')) {
     if (isSplitViewIdActive(changeInfo.splitViewId)) {
       clearPendingMerge(tabId);
@@ -175,6 +224,28 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+chrome.tabs.onMoved.addListener((tabId, moveInfo) => {
+  recordTabAction(tabId, 'moveOrigin', {
+    fromIndex: moveInfo.fromIndex,
+    toIndex: moveInfo.toIndex,
+    windowId: moveInfo.windowId
+  });
+});
+
+chrome.tabs.onAttached.addListener((tabId, attachInfo) => {
+  recordTabAction(tabId, 'attachOrigin', {
+    newPosition: attachInfo.newPosition,
+    newWindowId: attachInfo.newWindowId
+  });
+});
+
+chrome.tabs.onDetached.addListener((tabId, detachInfo) => {
+  recordTabAction(tabId, 'detachOrigin', {
+    oldPosition: detachInfo.oldPosition,
+    oldWindowId: detachInfo.oldWindowId
+  });
+});
+
 // Listen for new tabs
 chrome.tabs.onCreated.addListener((tab) => {
   groupTab(tab);
@@ -182,6 +253,8 @@ chrome.tabs.onCreated.addListener((tab) => {
 
 // Clean up pending merges if tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
+  tabOriginState.delete(tabId);
+  clearExtensionTabAction(tabId);
   clearPendingMerge(tabId);
 });
 
