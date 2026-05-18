@@ -215,7 +215,7 @@
       }
     }
 
-    return value.replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}]\uFE0F?\s+/u, '').trim();
+    return value.replace(/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji_Modifier}\p{Emoji_Component}\p{Regional_Indicator}\u200d\ufe0f\u2640\u2642\u26A5]+\s+/u, '').trim();
   }
 
   function normalizeGroupTitle(title) {
@@ -224,6 +224,10 @@
 
   function getGroupTitleIcon(title) {
     const value = String(title || '').trim();
+    const match = value.match(/^([\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Emoji_Modifier}\p{Emoji_Component}\p{Regional_Indicator}\u200d\ufe0f\u2640\u2642\u26A5]+)\s+/u);
+    if (match) {
+      return match[1];
+    }
     return GROUP_ICONS.find(icon => icon && value.startsWith(`${icon} `)) || '';
   }
 
