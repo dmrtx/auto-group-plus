@@ -43,7 +43,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === MESSAGE_ACTIONS.REGROUP_TAB && request.tabId) {
     console.log(`[AutoGroup+] Received manual regroup request for tab ${request.tabId}`);
     chrome.tabs.get(request.tabId).then((tab) => {
-      groupTab(tab);
+      groupTab(tab, {
+        ungroupIfUnmatched: request.ungroupIfUnmatched === true,
+        managedGroupNames: request.managedGroupNames
+      });
     }).catch(err => console.error("Could not get tab for regroup:", err));
     return;
   }
@@ -84,7 +87,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === MESSAGE_ACTIONS.REBUILD_GROUPS) {
     (async () => {
       try {
-        const processed = await rebuildOpenTabs('manual rebuild');
+        const processed = await rebuildOpenTabs('manual rebuild', request.managedGroupNames);
         sendResponse({ ok: true, processed });
       } catch (e) {
         console.error('[AutoGroup+] Failed to rebuild groups', e);
@@ -111,7 +114,7 @@ async function applySavedLayout(reason) {
   }
 }
 
-async function rebuildOpenTabs(reason) {
+async function rebuildOpenTabs(reason, managedGroupNames = []) {
   if (isRebuildingOpenTabs) return 0;
 
   isRebuildingOpenTabs = true;
@@ -125,9 +128,11 @@ async function rebuildOpenTabs(reason) {
       await groupTab(tab, {
         allowDiscarded: true,
         enableCountdown: false,
-        revealTab: false
+        revealTab: false,
+        ungroupIfUnmatched: true,
+        managedGroupNames
       });
-      await enforceSleepProtectionForTab(tab.id, tab.groupId);
+      await enforceSleepProtectionForTab(tab.id);
     }
 
     await applyGroupLayout(rules, settings);

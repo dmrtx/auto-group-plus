@@ -27,6 +27,7 @@ const { MESSAGE_ACTIONS } = AutoGroupConstants;
 const {
     GROUP_EMOJIS,
     formatGroupTitle,
+    findMatchingRule,
     getGroupTitleIcon,
     matchesPattern,
     normalizeGroupIcon,
@@ -55,6 +56,7 @@ async function init() {
         newGroupIconPreview: document.getElementById('new-group-icon-preview'),
         viewCurrentRulesBtn: document.getElementById('view-current-rules'),
         currentGroupNameSpan: document.getElementById('current-group-name'),
+        currentTabHost: document.getElementById('current-tab-host'),
         colorDots: document.querySelectorAll('.color-dot-select'),
         iconOptionsContainer: document.getElementById('emoji-options-mini'),
         suggestions: {
@@ -87,6 +89,10 @@ async function init() {
         popupLogger?.debug('Processing active tab URL', { url: tab.url });
         try {
             currentUrl = new URL(tab.url);
+            if (elements.currentTabHost) {
+                elements.currentTabHost.textContent = currentUrl.hostname || 'Current tab';
+                elements.currentTabHost.title = currentUrl.href;
+            }
             setupSuggestions(elements);
         } catch (error) {
             popupLogger?.warn('Could not parse current tab URL', { url: tab.url, error });
@@ -112,9 +118,8 @@ async function init() {
     }
 
     // 5. Check for existing pattern match
-    const contentEl = document.querySelector('.suggestions');
     if (currentUrl) {
-        const matchedRule = existingRules.find(r => r.patterns && r.patterns.some(p => matchesPattern(currentUrl.href, p)));
+        const matchedRule = findMatchingRule(existingRules, currentUrl.href);
 
         if (matchedRule) {
             const matchedPattern = matchedRule.patterns.find(p => matchesPattern(currentUrl.href, p));
@@ -124,9 +129,9 @@ async function init() {
             if (elements.groupSelect) elements.groupSelect.value = matchedRule.id;
             if (elements.patternInput) elements.patternInput.value = matchedPattern;
 
-            if (contentEl) {
+            if (elements.quickRuleForm) {
                 const statusDiv = createMatchStatus();
-                contentEl.parentNode.insertBefore(statusDiv, contentEl);
+                elements.quickRuleForm.before(statusDiv);
             }
 
             const btn = elements.quickRuleForm.querySelector('button[type="submit"]');
@@ -157,7 +162,12 @@ async function init() {
                     // Trigger Regroup (which essentially re-evaluates)
                     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                         if (tabs[0]) {
-                            chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REGROUP_TAB, tabId: tabs[0].id });
+                            chrome.runtime.sendMessage({
+                                action: MESSAGE_ACTIONS.REGROUP_TAB,
+                                tabId: tabs[0].id,
+                                ungroupIfUnmatched: true,
+                                managedGroupNames: [matchedRule.name]
+                            });
                         }
                     });
 
@@ -229,22 +239,21 @@ async function init() {
 function createMatchStatus() {
     const statusDiv = document.createElement('div');
     statusDiv.className = 'match-status';
-    statusDiv.style.cssText = 'background: rgba(16, 185, 129, 0.2); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; gap: 0.75rem;';
 
     const icon = document.createElement('div');
-    icon.style.cssText = 'background: #10b981; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold;';
+    icon.className = 'match-status-icon';
     icon.textContent = '✓';
 
     const copy = document.createElement('div');
-    copy.style.flex = '1';
+    copy.className = 'match-status-copy';
 
     const title = document.createElement('div');
-    title.style.cssText = 'font-weight: 600; font-size: 0.85rem; color: #6ee7b7;';
-    title.textContent = 'Pattern Saved';
+    title.className = 'match-status-title';
+    title.textContent = 'Rule already matches';
 
     const subtitle = document.createElement('div');
-    subtitle.style.cssText = 'font-size: 0.75rem; color: #d1fae5; opacity: 0.8;';
-    subtitle.textContent = 'Matches this page';
+    subtitle.className = 'match-status-subtitle';
+    subtitle.textContent = 'Saving will update the existing pattern.';
 
     copy.append(title, subtitle);
     statusDiv.append(icon, copy);
@@ -261,20 +270,16 @@ function setupSuggestions(els) {
     // Clear existing static suggestions
     suggestionsContainer.replaceChildren();
 
-    const label = document.createElement('span');
-    label.style.cssText = 'font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 0.3rem;';
-    label.textContent = 'Suggestions:';
-    suggestionsContainer.appendChild(label);
-
     const suggestions = buildPatternSuggestions(currentUrl);
 
     const addSuggestion = (suggestion) => {
-        const a = document.createElement('a');
-        a.className = 'suggestion-link';
-        a.innerText = suggestion.label;
-        if (suggestion.title) a.title = suggestion.title;
-        a.onclick = () => { if (els.patternInput) els.patternInput.value = suggestion.value; };
-        suggestionsContainer.appendChild(a);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'suggestion-link';
+        button.innerText = suggestion.title || suggestion.label;
+        button.title = suggestion.label;
+        button.onclick = () => { if (els.patternInput) els.patternInput.value = suggestion.value; };
+        suggestionsContainer.appendChild(button);
     };
 
     suggestions.forEach(addSuggestion);

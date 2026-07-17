@@ -42,6 +42,7 @@ const mergeCountdownCheck = document.getElementById('setting-merge-countdown');
 const keepGroupOrderCheck = document.getElementById('setting-keep-group-order');
 const groupsBeforeTabsCheck = document.getElementById('setting-groups-before-tabs');
 const preserveSplitViewCheck = document.getElementById('setting-preserve-split-view');
+const ruleCount = document.getElementById('rule-count');
 const CONFIG_EXPORT_VERSION = 1;
 
 // Load rules & settings on startup
@@ -81,6 +82,9 @@ function renderRules() {
     hasRuleOrderChanged = false;
     rulesContainer.classList.remove('is-ordering');
     rulesContainer.replaceChildren();
+    if (ruleCount) {
+        ruleCount.textContent = `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}`;
+    }
     if (rules.length === 0) {
         rulesContainer.appendChild(createEmptyState());
         return;
@@ -107,7 +111,7 @@ function createEmptyState() {
     emptyState.className = 'empty-state';
 
     const message = document.createElement('p');
-    message.textContent = 'No rules defined yet. Click "Add Group Rule" to get started!';
+    message.textContent = 'No grouping rules yet. Add one to start organizing matching tabs.';
 
     emptyState.appendChild(message);
     return emptyState;
@@ -169,13 +173,13 @@ function createRuleCard(rule, orderIndex) {
     const meta = document.createElement('div');
     meta.className = 'rule-meta';
     meta.textContent = [
-        rule.merge ? '✓ Merge' : '',
-        rule.protectFromSleep === true ? '✓ No sleep' : '',
-        Number.isInteger(rule.groupOrder) ? `✓ Order ${rule.groupOrder}` : '',
-        fixedTabs.length ? `✓ ${fixedTabs.length} fixed` : ''
+        rule.merge ? 'Merges across windows' : 'Stays in each window',
+        rule.protectFromSleep === true ? 'Sleep protected' : '',
+        Number.isInteger(rule.groupOrder) ? `Order ${rule.groupOrder}` : '',
+        fixedTabs.length ? `${fixedTabs.length} fixed ${fixedTabs.length === 1 ? 'position' : 'positions'}` : ''
     ]
         .filter(Boolean)
-        .join('  ');
+        .join(' · ');
 
     info.append(header, patterns, meta);
 
@@ -395,8 +399,10 @@ function editRule(id) {
 
 async function deleteRule(id) {
     if (confirm('Are you sure you want to delete this rule?')) {
+        const deletedRule = rules.find(r => r.id === id);
         rules = rules.filter(r => r.id !== id);
         await chrome.storage.sync.set({ rules });
+        await applyRulesToOpenTabs(deletedRule ? [deletedRule.name] : []);
         renderRules();
     }
 }
@@ -523,6 +529,12 @@ ruleForm.onsubmit = async (e) => {
     const merge = document.getElementById('rule-merge').checked;
     const protectFromSleep = document.getElementById('rule-protect-from-sleep').checked;
 
+    const duplicateName = rules.find(rule => rule.id !== id && normalizeGroupName(rule.name) === normalizeGroupName(name));
+    if (duplicateName) {
+        alert('Another rule already uses this group title. Group titles must be unique.');
+        return;
+    }
+
     const newRule = { id, name, patterns, color, merge, fixedTabs, protectFromSleep };
     if (icon) {
         newRule.icon = icon;
@@ -532,6 +544,7 @@ ruleForm.onsubmit = async (e) => {
     }
 
     const existingIndex = rules.findIndex(r => r.id === id);
+    const previousRuleNames = existingIndex > -1 ? [rules[existingIndex].name] : [];
     if (existingIndex > -1) {
         rules[existingIndex] = newRule;
     } else {
@@ -540,7 +553,7 @@ ruleForm.onsubmit = async (e) => {
 
     await chrome.storage.sync.set({ rules });
     await syncBrowserGroupColor(newRule);
-    await applyRulesToOpenTabs();
+    await applyRulesToOpenTabs(previousRuleNames);
     closeModal();
     renderRules();
 };
@@ -562,8 +575,11 @@ function parseGroupOrder(value) {
     return Number.isInteger(order) && order >= 0 ? order : null;
 }
 
-async function applyRulesToOpenTabs() {
-    await chrome.runtime.sendMessage({ action: MESSAGE_ACTIONS.REBUILD_GROUPS }).catch((e) => {
+async function applyRulesToOpenTabs(managedGroupNames = []) {
+    await chrome.runtime.sendMessage({
+        action: MESSAGE_ACTIONS.REBUILD_GROUPS,
+        managedGroupNames
+    }).catch((e) => {
         console.warn('Could not apply rules after saving.', e);
     });
 }
@@ -723,6 +739,7 @@ function isIpAddress(hostname) {
 
 async function importConfiguration(file) {
     try {
+        const previousRuleNames = rules.map(rule => rule.name).filter(Boolean);
         const text = await file.text();
         const parsed = JSON.parse(text);
         const importedRules = sanitizeRules(parsed && parsed.rules);
@@ -740,7 +757,7 @@ async function importConfiguration(file) {
         rules = importedRules;
         applySettingsToUi(importedSettings);
         renderRules();
-        await applyRulesToOpenTabs();
+        await applyRulesToOpenTabs(previousRuleNames);
         await applyGroupLayoutToOpenTabs();
         alert(`Imported ${importedRules.length} rules.`);
     } catch (error) {
@@ -756,9 +773,16 @@ async function importConfiguration(file) {
 function sanitizeRules(value) {
     if (!Array.isArray(value)) return [];
 
+    const seenNames = new Set();
     return value
         .map((rule, index) => sanitizeRule(rule, index))
-        .filter(Boolean);
+        .filter(rule => {
+            if (!rule) return false;
+            const normalizedName = normalizeGroupName(rule.name);
+            if (!normalizedName || seenNames.has(normalizedName)) return false;
+            seenNames.add(normalizedName);
+            return true;
+        });
 }
 
 function sanitizeRule(rule, index) {

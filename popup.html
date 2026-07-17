@@ -245,27 +245,31 @@
             background-color: #fa903e;
         }
     </style>
+    <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-    <header>
-        <h2>Add Grouping Patterns</h2>
+    <header class="popup-header">
+        <div>
+            <h1>AutoGroup+</h1>
+            <p id="current-tab-host" class="current-tab-host">Current tab</p>
+        </div>
+        <span class="header-mark" aria-hidden="true">A+</span>
     </header>
-
-    <div class="suggestions">
-        <span style="font-size: 0.75rem; color: var(--text-dim);">Suggestions:</span>
-        <a id="suggest-domain" class="suggestion-link">This domain</a>
-        <a id="suggest-wildcard" class="suggestion-link">This domain and its subdomains</a>
-        <a id="suggest-url" class="suggestion-link">This exact URL</a>
-    </div>
 
     <form id="quick-rule-form">
         <div class="form-group">
+            <label for="pattern-input">URL pattern</label>
             <input type="text" id="pattern-input" placeholder="URL pattern" required>
+            <div class="suggestions" aria-label="Suggested URL patterns">
+                <button type="button" id="suggest-domain" class="suggestion-link">Domain</button>
+                <button type="button" id="suggest-wildcard" class="suggestion-link">Domain + subdomains</button>
+                <button type="button" id="suggest-url" class="suggestion-link">Exact URL</button>
+            </div>
         </div>
 
         <div class="form-group">
-            <label>Select group configuration</label>
+            <label for="group-select">Destination group</label>
             <select id="group-select">
                 <option value="new">+ Create new group...</option>
             </select>
@@ -284,7 +288,7 @@
                 </div>
             </div>
             <input type="hidden" id="new-group-icon" value="">
-            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem;" class="color-options-mini">
+            <div class="color-options-mini" aria-label="Group color">
                 <div class="color-dot-select selected" data-color="blue" style="background: #1a73e8;"></div>
                 <div class="color-dot-select" data-color="red" style="background: #d93025;"></div>
                 <div class="color-dot-select" data-color="green" style="background: #1e8e3e;"></div>
@@ -296,33 +300,17 @@
             </div>
             <input type="hidden" id="new-group-color" value="blue">
         </div>
-        <style>
-            .color-dot-select {
-                width: 16px;
-                height: 16px;
-                border-radius: 50%;
-                cursor: pointer;
-                border: 2px solid transparent;
-                transition: transform 0.2s;
-            }
-
-            .color-dot-select.selected {
-                border-color: white;
-                transform: scale(1.2);
-            }
-        </style>
-
-        <div style="display: flex; gap: 0.5rem;">
-            <button type="submit" class="btn" style="flex: 1;">Save new patterns</button>
+        <div class="form-actions">
+            <button type="submit" class="btn">Save rule</button>
             <button type="button" id="btn-delete-pattern" class="btn"
-                style="flex: 0 0 auto; background: #ef4444; width: auto; display: none;" title="Remove this pattern">
-                <span style="font-size: 1.2em; line-height: 1;">&times;</span>
+                title="Remove this pattern" aria-label="Remove this pattern">
+                Remove
             </button>
         </div>
     </form>
 
     <div class="footer-links">
-        <a href="#" id="open-settings" class="footer-link">⚙ More options</a>
+        <a href="#" id="open-settings" class="footer-link">Settings</a>
         <a href="#" id="view-current-rules" class="footer-link" style="display: none;">
             <span id="current-group-icon">📁</span> Show all rules for <span id="current-group-name">...</span>
         </a>

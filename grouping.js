@@ -1,16 +1,37 @@
 (function initAutoGroupGrouping(root, factory) {
-  root.AutoGroupGrouping = factory(root.AutoGroupConstants, root.AutoGroupRules);
+  const constants = root.AutoGroupConstants || (typeof module === 'object' && module.exports ? require('./constants.js') : null);
+  const rules = root.AutoGroupRules || (typeof module === 'object' && module.exports ? require('./rules.js') : null);
+  const api = factory(constants, rules);
+
+  if (typeof module === 'object' && module.exports) {
+    module.exports = api;
+  }
+
+  root.AutoGroupGrouping = api;
 })(globalThis, function createAutoGroupGrouping(constants, rulesApi) {
   const { MESSAGE_ACTIONS } = constants;
   const { findFixedTabPosition, findMatchingRule, formatGroupTitle, normalizeGroupTitle } = rulesApi;
   const pendingMerges = {};
   const extensionTabActions = new Map();
   const EXTENSION_ACTION_TTL_MS = 4000;
+  let groupingQueue = Promise.resolve();
 
-  async function groupTab(tab, options = {}) {
+  function enqueueGroupingOperation(callback) {
+    const operation = groupingQueue.then(callback);
+    groupingQueue = operation.catch(() => {});
+    return operation;
+  }
+
+  function groupTab(tab, options = {}) {
+    return enqueueGroupingOperation(() => reconcileTab(tab, options));
+  }
+
+  async function reconcileTab(tab, options = {}) {
     try {
+      if (!tab || !Number.isInteger(tab.id)) return;
+      tab = await chrome.tabs.get(tab.id).catch(() => tab);
       if (!tab.url) return;
-      const revealTab = options.revealTab !== false;
+      const revealTab = options.revealTab !== false && tab.discarded !== true;
       const allowDiscarded = options.allowDiscarded === true;
 
       if (tab.discarded && !allowDiscarded) {
@@ -42,7 +63,11 @@
       }
 
       const rule = findMatchingRule(rules, tab.url);
-      if (!rule) return;
+      if (!rule) {
+        clearPendingMerge(tab.id);
+        await reconcileUnmatchedTab(tab, rules, options);
+        return;
+      }
 
       chrome.action.setBadgeText({ text: 'MATCH' });
       chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
@@ -51,9 +76,10 @@
       const allGroups = await chrome.tabGroups.query({});
       console.log(`[AutoGroup+] Scanning ${allGroups.length} existing groups for match: "${rule.name}"`);
 
-      const existingGroup = allGroups.find(group => {
+      const matchingGroups = allGroups.filter(group => {
         return normalizeGroupTitle(group.title) === normalizeGroupTitle(rule.name);
       });
+      const existingGroup = matchingGroups.find(group => group.windowId === tab.windowId) || matchingGroups[0];
       const targetWindowId = existingGroup && rule.merge && tab.windowId !== existingGroup.windowId
         ? existingGroup.windowId
         : tab.windowId;
@@ -73,7 +99,7 @@
 
       const desiredTitle = formatGroupTitle(rule);
       if (existingGroup.color !== rule.color || existingGroup.title !== desiredTitle) {
-        chrome.tabGroups.update(existingGroup.id, { color: rule.color, title: desiredTitle });
+        await chrome.tabGroups.update(existingGroup.id, { color: rule.color, title: desiredTitle });
       }
 
       await placeTabInGroup(tab, existingGroup, rule, enableCountdown, { revealTab });
@@ -90,6 +116,27 @@
       chrome.action.setBadgeText({ text: 'ERR' });
       chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
     }
+  }
+
+  async function reconcileUnmatchedTab(tab, rules, options) {
+    if (options.ungroupIfUnmatched !== true) return;
+    if (!Number.isInteger(tab.groupId) || tab.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE) {
+      return;
+    }
+
+    const group = await chrome.tabGroups.get(tab.groupId).catch(() => null);
+    if (!group) return;
+
+    const managedNames = new Set([
+      ...rules.map(rule => normalizeGroupTitle(rule && rule.name)),
+      ...(Array.isArray(options.managedGroupNames) ? options.managedGroupNames.map(normalizeGroupTitle) : [])
+    ].filter(Boolean));
+
+    if (!managedNames.has(normalizeGroupTitle(group.title))) return;
+
+    markExtensionTabAction(tab.id, 'ungroup-unmatched');
+    await chrome.tabs.ungroup(tab.id);
+    await applySleepProtectionToTab(tab.id, { protectFromSleep: false });
   }
 
   async function placeTabInGroup(tab, existingGroup, rule, enableCountdown, options = {}) {
@@ -140,6 +187,7 @@
     }
 
     console.log(`[AutoGroup+] Starting merge countdown for Tab ${tab.id} -> Group ${existingGroup.id}`);
+    clearPendingMerge(tab.id);
 
     let messageSent = false;
     try {
@@ -167,14 +215,14 @@
 
     const timeoutId = setTimeout(async () => {
       console.log(`[AutoGroup+] Timeout reached. Moving tab ${tab.id}.`);
-      await performMove(
+      await enqueueGroupingOperation(() => performMove(
         tab.id,
         existingGroup.id,
         existingGroup.windowId,
         findFixedTabPosition(rule, tab.url),
         1,
         { revealTab }
-      );
+      ));
       delete pendingMerges[tab.id];
     }, 5000);
 
@@ -265,9 +313,9 @@
 
   async function performMove(tabId, groupId, windowId, targetIndex = null, attempt = 1, options = {}) {
     try {
-      const revealTab = options.revealTab !== false;
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab) return;
+      const revealTab = options.revealTab !== false && tab.discarded !== true;
       const { settings = {} } = await chrome.storage.sync.get('settings');
       if (settings.preserveSplitView !== false && isSplitViewTab(tab)) return;
 
@@ -287,7 +335,9 @@
       const msg = e.message || '';
       if (msg.includes('Tabs cannot be edited right now') && attempt <= 3) {
         console.warn(`[AutoGroup+] Tab dragging detected. Retrying move (Attempt ${attempt}/3)...`);
-        setTimeout(() => performMove(tabId, groupId, windowId, targetIndex, attempt + 1, options), 500 * attempt);
+        setTimeout(() => {
+          enqueueGroupingOperation(() => performMove(tabId, groupId, windowId, targetIndex, attempt + 1, options));
+        }, 500 * attempt);
         return;
       }
 
@@ -319,7 +369,7 @@
   async function revealGroupedTab(tabId, fallbackWindowId, attempt = 1) {
     try {
       const tab = await chrome.tabs.get(tabId).catch(() => null);
-      if (!tab) return;
+      if (!tab || tab.discarded === true) return;
 
       const targetWindowId = Number.isInteger(tab.windowId) ? tab.windowId : fallbackWindowId;
       await chrome.windows.update(targetWindowId, { focused: true });
@@ -498,7 +548,7 @@
     if (!pending) return false;
 
     clearTimeout(pending.timeoutId);
-    performMove(tabId, pending.groupId, pending.windowId, pending.targetIndex);
+    enqueueGroupingOperation(() => performMove(tabId, pending.groupId, pending.windowId, pending.targetIndex));
     delete pendingMerges[tabId];
     console.log(`[AutoGroup+] Merge CONFIRMED for tab ${tabId}`);
     return true;

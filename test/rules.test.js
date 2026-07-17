@@ -34,6 +34,11 @@ test('matches simple glob URL patterns', () => {
   assert.equal(matchesPattern('https://example.com/settings', 'https://example.com/projects/*'), false);
 });
 
+test('treats query separators literally in glob URL patterns', () => {
+  assert.equal(matchesPattern('https://example.com/search?q=hello', 'https://example.com/search?q=*'), true);
+  assert.equal(matchesPattern('https://example.com/searchqq=hello', 'https://example.com/search?q=*'), false);
+});
+
 test('prefers the most specific matching rule', () => {
   const rules = [
     { id: 'invalid', name: '', patterns: ['example.com'] },

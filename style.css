@@ -30,9 +30,7 @@ html {
 body {
   min-height: 100vh;
   padding: 28px;
-  background:
-    linear-gradient(180deg, rgba(244, 241, 234, 0.025), rgba(244, 241, 234, 0) 260px),
-    var(--bg-dark);
+  background: var(--bg-dark);
   color: var(--text-main);
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, sans-serif;
   font-size: 15px;
@@ -46,20 +44,20 @@ body {
 
 .page-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 22px;
-  padding-bottom: 18px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
   border-bottom: 1px solid var(--border);
 }
 
 h1 {
   color: var(--text-main);
-  font-size: clamp(2rem, 5vw, 3.15rem);
-  font-weight: 760;
-  letter-spacing: -0.06em;
-  line-height: 0.95;
+  font-size: 1.55rem;
+  font-weight: 740;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
 }
 
 h2 {
@@ -69,11 +67,11 @@ h2 {
   letter-spacing: -0.02em;
 }
 
-.eyebrow {
-  margin-bottom: 4px;
+.page-description,
+.section-heading p {
+  margin-top: 4px;
   color: var(--text-dim);
-  font-size: 0.78rem;
-  font-weight: 640;
+  font-size: 0.82rem;
 }
 
 .header-actions,
@@ -159,7 +157,7 @@ textarea:focus-visible,
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .section-heading {
@@ -167,19 +165,19 @@ textarea:focus-visible,
 }
 
 .settings-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  display: block;
   margin-bottom: 16px;
 }
 
 .setting-row {
-  min-height: 58px;
-  padding: 12px;
-  background: var(--panel-muted);
-  border: 1px solid rgba(244, 241, 234, 0.08);
-  border-radius: 10px;
+  min-height: 48px;
+  padding: 11px 2px;
+  border-bottom: 1px solid rgba(244, 241, 234, 0.08);
   color: var(--text-soft);
+}
+
+.setting-row:first-child {
+  border-top: 1px solid rgba(244, 241, 234, 0.08);
 }
 
 .setting-row strong {
@@ -189,6 +187,24 @@ textarea:focus-visible,
 #rules-container {
   display: grid;
   gap: 10px;
+}
+
+.rules-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 22px 2px 10px;
+}
+
+.rules-heading span {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+
+.sleep-note {
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-size: 0.76rem;
 }
 
 .rule-card {
@@ -201,7 +217,7 @@ textarea:focus-visible,
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  box-shadow: none;
   animation: fadeIn 0.22s ease-out;
 }
 
@@ -360,7 +376,7 @@ textarea:focus-visible,
   background: var(--panel-bg);
   border: 1px solid var(--border-strong);
   border-radius: 12px;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 #modal-title {

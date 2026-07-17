@@ -12,8 +12,8 @@
   <div class="container">
     <header class="page-header">
       <div>
-        <p class="eyebrow">Chrome tab groups</p>
         <h1>AutoGroup+</h1>
+        <p class="page-description">Automatic tab groups, without waking discarded tabs.</p>
       </div>
       <div class="header-actions">
         <button id="view-overview-btn" class="btn btn-secondary">
@@ -27,8 +27,8 @@
 
     <section id="global-settings" class="settings-panel">
       <div class="section-heading">
-        <p class="eyebrow">Runtime behavior</p>
-        <h2>Global Settings</h2>
+        <h2>Behavior</h2>
+        <p>Changes apply immediately to future tab activity.</p>
       </div>
 
       <div class="settings-list">
@@ -60,7 +60,7 @@
 
       <div class="settings-actions">
         <button id="rebuild-groups-btn" class="btn btn-primary">
-          Rebuild tab groups now
+          Apply rules to open tabs
         </button>
         <button id="generate-rules-from-groups-btn" class="btn btn-secondary" type="button">
           Generate Rules From Groups
@@ -73,8 +73,13 @@
         </button>
         <input id="import-config-file" type="file" accept="application/json,.json" hidden>
       </div>
+      <p class="sleep-note">Discarded tabs may be reorganized, but they are never activated or focused.</p>
     </section>
 
+    <div class="rules-heading">
+      <h2>Rules</h2>
+      <span id="rule-count">0 rules</span>
+    </div>
     <div id="rules-container">
       <!-- Rules will be injected here -->
     </div>

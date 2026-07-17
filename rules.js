@@ -64,7 +64,7 @@
 
       // Simple glob-style matching for URL or hostname patterns.
       const regexPattern = cleanPattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/[.?+^${}()|[\]\\]/g, '\\$&')
         .replace(/\*/g, '.*');
       const regex = new RegExp(`^${regexPattern}$`, 'i');
 
