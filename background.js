@@ -132,7 +132,6 @@ async function rebuildOpenTabs(reason, managedGroupNames = []) {
         ungroupIfUnmatched: true,
         managedGroupNames
       });
-      await enforceSleepProtectionForTab(tab.id);
     }
 
     await applyGroupLayout(rules, settings);

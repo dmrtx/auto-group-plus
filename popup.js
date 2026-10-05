@@ -512,6 +512,8 @@ async function handleFormSubmit(e, els) {
 
     const selectedValue = els.groupSelect.value;
     let ruleIdToUpdate = selectedValue;
+    let previousGroupName = null;
+    let browserGroupIdToUpdate = null;
     const isReplacingMatchedPattern = Boolean(
         matchedRuleId &&
         matchedPatternValue &&
@@ -570,8 +572,7 @@ async function handleFormSubmit(e, els) {
         }
 
         if (Number.isInteger(browserGroupId)) {
-            const updatedRule = existingRules.find(rule => rule.id === ruleIdToUpdate);
-            chrome.tabGroups.update(browserGroupId, { color, title: formatGroupTitle(updatedRule) }).catch(() => { });
+            browserGroupIdToUpdate = browserGroupId;
         }
 
     } else {
@@ -587,6 +588,14 @@ async function handleFormSubmit(e, els) {
                 return;
             }
 
+            const duplicateName = existingRules.find(candidate => candidate.id !== rule.id &&
+                normalizeGroupName(candidate.name) === normalizeGroupName(name));
+            if (duplicateName) {
+                alert('Another rule already uses this group title. Group titles must be unique.');
+                return;
+            }
+
+            previousGroupName = rule.name;
             rule.name = name;
             rule.color = color;
             if (icon) {
@@ -601,11 +610,18 @@ async function handleFormSubmit(e, els) {
                 rule.patterns.push(pattern);
             }
             existingRules[ruleIndex] = rule;
-            await updateOpenGroupsAppearance(rule);
         }
     }
 
     await chrome.storage.sync.set({ rules: existingRules });
+    const savedRule = existingRules.find(rule => rule.id === ruleIdToUpdate);
+    await updateOpenGroupsAppearance(savedRule, previousGroupName);
+    if (Number.isInteger(browserGroupIdToUpdate) && savedRule) {
+        await chrome.tabGroups.update(browserGroupIdToUpdate, {
+            color: savedRule.color,
+            title: formatGroupTitle(savedRule)
+        }).catch(() => {});
+    }
 
     // Trigger immediate regrouping
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -782,12 +798,12 @@ async function ensureEmojiPickerDataLoaded() {
     return emojiDataLoadPromise;
 }
 
-async function updateOpenGroupsAppearance(rule) {
+async function updateOpenGroupsAppearance(rule, previousName = null) {
     if (!rule || !rule.name || !rule.color) return;
 
     const groups = await chrome.tabGroups.query({}).catch(() => []);
     await Promise.all(groups
-        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(rule.name))
+        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(previousName || rule.name))
         .map(group => chrome.tabGroups.update(group.id, { color: rule.color, title: formatGroupTitle(rule) }).catch(() => {})));
 }
 

@@ -407,12 +407,12 @@ async function deleteRule(id) {
     }
 }
 
-async function syncBrowserGroupColor(rule) {
+async function syncBrowserGroupColor(rule, previousName = null) {
     if (!rule || !rule.name || !rule.color) return;
 
     const groups = await chrome.tabGroups.query({}).catch(() => []);
     await Promise.all(groups
-        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(rule.name))
+        .filter(group => normalizeGroupName(group.title) === normalizeGroupName(previousName || rule.name))
         .map(group => chrome.tabGroups.update(group.id, { color: rule.color, title: formatGroupTitle(rule) }).catch(() => {})));
 }
 
@@ -552,7 +552,7 @@ ruleForm.onsubmit = async (e) => {
     }
 
     await chrome.storage.sync.set({ rules });
-    await syncBrowserGroupColor(newRule);
+    await syncBrowserGroupColor(newRule, previousRuleNames[0]);
     await applyRulesToOpenTabs(previousRuleNames);
     closeModal();
     renderRules();

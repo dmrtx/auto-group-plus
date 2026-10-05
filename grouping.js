@@ -23,12 +23,16 @@
   }
 
   function groupTab(tab, options = {}) {
+    // Cancel immediately, even while an earlier move is waiting to retry.
+    if (tab && Number.isInteger(tab.id)) clearPendingMerge(tab.id);
     return enqueueGroupingOperation(() => reconcileTab(tab, options));
   }
 
   async function reconcileTab(tab, options = {}) {
     try {
       if (!tab || !Number.isInteger(tab.id)) return;
+      // A previous queued reconciliation may have started a countdown meanwhile.
+      clearPendingMerge(tab.id);
       tab = await chrome.tabs.get(tab.id).catch(() => tab);
       if (!tab.url) return;
       const revealTab = options.revealTab !== false && tab.discarded !== true;
@@ -213,25 +217,34 @@
       return;
     }
 
-    const timeoutId = setTimeout(async () => {
-      console.log(`[AutoGroup+] Timeout reached. Moving tab ${tab.id}.`);
-      await enqueueGroupingOperation(() => performMove(
-        tab.id,
-        existingGroup.id,
-        existingGroup.windowId,
-        findFixedTabPosition(rule, tab.url),
-        1,
-        { revealTab }
-      ));
-      delete pendingMerges[tab.id];
-    }, 5000);
-
-    pendingMerges[tab.id] = {
-      timeoutId,
+    const pending = {
       groupId: existingGroup.id,
       windowId: existingGroup.windowId,
-      targetIndex: findFixedTabPosition(rule, tab.url)
+      sourceWindowId: tab.windowId,
+      sourceGroupId: tab.groupId,
+      url: tab.url,
+      ruleName: rule.name,
+      revealTab
     };
+    pending.timeoutId = setTimeout(() => {
+      console.log(`[AutoGroup+] Timeout reached. Moving tab ${tab.id}.`);
+      enqueueGroupingOperation(() => performPendingMerge(tab.id, pending));
+    }, 5000);
+
+    pendingMerges[tab.id] = pending;
+  }
+
+  async function performPendingMerge(tabId, pending) {
+    if (pendingMerges[tabId] !== pending) return;
+    clearTimeout(pending.timeoutId);
+    try {
+      await performMove(tabId, pending.groupId, pending.windowId, null, 1, {
+        revealTab: pending.revealTab,
+        pendingMerge: pending
+      });
+    } finally {
+      if (pendingMerges[tabId] === pending) clearPendingMerge(tabId);
+    }
   }
 
   async function createGroupForTab(tab, rule, options = {}) {
@@ -319,6 +332,23 @@
       const { settings = {} } = await chrome.storage.sync.get('settings');
       if (settings.preserveSplitView !== false && isSplitViewTab(tab)) return;
 
+      if (options.pendingMerge) {
+        const pending = options.pendingMerge;
+        const [group, { rules = [] }] = await Promise.all([
+          chrome.tabGroups.get(groupId).catch(() => null),
+          chrome.storage.sync.get('rules')
+        ]);
+        const rule = findMatchingRule(rules, tab.url);
+        if (pendingMerges[tabId] !== pending || !group || !rule ||
+            tab.discarded === true || tab.url !== pending.url || rule.merge !== true ||
+            normalizeGroupTitle(rule.name) !== normalizeGroupTitle(pending.ruleName) ||
+            normalizeGroupTitle(group.title) !== normalizeGroupTitle(rule.name) ||
+            group.windowId !== pending.windowId) return;
+
+        if (attempt === 1 && (tab.windowId !== pending.sourceWindowId || tab.groupId !== pending.sourceGroupId)) return;
+        targetIndex = findFixedTabPosition(rule, tab.url);
+      }
+
       markExtensionTabAction(tabId, 'move-cross-window');
       await chrome.tabs.move(tabId, { windowId, index: -1 });
       markExtensionTabAction(tabId, 'group-cross-window');
@@ -335,10 +365,8 @@
       const msg = e.message || '';
       if (msg.includes('Tabs cannot be edited right now') && attempt <= 3) {
         console.warn(`[AutoGroup+] Tab dragging detected. Retrying move (Attempt ${attempt}/3)...`);
-        setTimeout(() => {
-          enqueueGroupingOperation(() => performMove(tabId, groupId, windowId, targetIndex, attempt + 1, options));
-        }, 500 * attempt);
-        return;
+        await wait(500 * attempt);
+        return performMove(tabId, groupId, windowId, targetIndex, attempt + 1, options);
       }
 
       if (msg.includes('No tab with id')) return;
@@ -548,8 +576,7 @@
     if (!pending) return false;
 
     clearTimeout(pending.timeoutId);
-    enqueueGroupingOperation(() => performMove(tabId, pending.groupId, pending.windowId, pending.targetIndex));
-    delete pendingMerges[tabId];
+    enqueueGroupingOperation(() => performPendingMerge(tabId, pending));
     console.log(`[AutoGroup+] Merge CONFIRMED for tab ${tabId}`);
     return true;
   }
