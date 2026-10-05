@@ -1,0 +1,14 @@
+# Local metadata and generated archives
+.DS_Store
+__MACOSX/
+*.zip
+node_modules/
+
+# Local credentials and environment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
